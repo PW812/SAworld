@@ -119,6 +119,10 @@ class SAWorldHead(BaseModule):
                  action_velocity_from_history=True,
                  action_history_dt=0.5,
                  action_history_is_displacement=True,
+                 explicit_time_condition=False,
+                 future_time_dt=0.5,
+                 use_action_residual=False,
+                 action_residual_weight=1.0,
                  **kwargs):
         super(SAWorldHead, self).__init__()
         self.bev_h = bev_h
@@ -138,10 +142,21 @@ class SAWorldHead(BaseModule):
         self.valid_fut_ts = valid_fut_ts
         self.num_scenes = num_scenes
         self.num_frames = num_frames
+        self.explicit_time_condition = bool(explicit_time_condition)
+        self.future_time_dt = float(future_time_dt)
+        self.use_action_residual = bool(use_action_residual)
+        self.action_residual_weight = float(action_residual_weight)
+        if self.explicit_time_condition and (
+                not isfinite(self.future_time_dt) or self.future_time_dt <= 0):
+            raise ValueError('future_time_dt must be positive, in seconds')
+        if self.use_action_residual and not isfinite(self.action_residual_weight):
+            raise ValueError('action_residual_weight must be finite')
         self.grid_min = torch.tensor([grid_config['x'][0], grid_config['y'][0]])
         self.grid_max = torch.tensor([grid_config['x'][1], grid_config['y'][1]])
         self.grid_size = torch.tensor([grid_config['x'][2], grid_config['y'][2]])
         self.use_action = use_action
+        if self.use_action_residual and not self.use_action:
+            raise ValueError('use_action_residual requires use_action=True')
         # ActionDiT 只读取观测场景；专家轨迹在 loss() 中单独监督 flow。
         if self.use_action :
             self.action_dit_cfg = dict(
@@ -210,6 +225,17 @@ class SAWorldHead(BaseModule):
         self.tokenlearner = TokenLearner(self.num_scenes, self.embed_dims * 2)
         self.res_tokenlearner = TokenLearner(self.num_scenes, self.embed_dims * 2)
         self.tokenfuser = TokenFuser(self.num_scenes, 256)
+        if self.explicit_time_condition:
+            self.future_time_encoder = nn.Sequential(
+                nn.Linear(4, self.embed_dims),
+                nn.ReLU(),
+                nn.Linear(self.embed_dims, self.embed_dims))
+        if self.use_action_residual:
+            self.action_residual_adapter = nn.Sequential(
+                nn.Linear(self.embed_dims * 2, self.embed_dims),
+                nn.LayerNorm(self.embed_dims),
+                nn.SiLU(),
+                nn.Linear(self.embed_dims, self.embed_dims))
 
         self.latent_decoder = build_transformer_layer_sequence(self.latent_decoder)
         self.way_decoder = build_transformer_layer_sequence(self.way_decoder)
@@ -236,6 +262,30 @@ class SAWorldHead(BaseModule):
             for p in self.res_latent_decoder.parameters():
                 if p.dim() > 1:
                     nn.init.xavier_uniform_(p) 
+
+    def _future_time_tokens(self, device, dtype):
+        """Return one continuous physical-time token for each waypoint.
+
+        The embedding is repeated in mode-major order, matching the layout of
+        ``way_point`` and ``[B, ego_fut_mode, fut_ts, 2]`` trajectory outputs.
+        """
+        if not self.explicit_time_condition:
+            return torch.zeros(
+                self.ego_fut_mode * self.fut_ts,
+                self.embed_dims,
+                device=device,
+                dtype=dtype)
+        times = torch.arange(
+            1, self.fut_ts + 1, device=device, dtype=torch.float32)
+        times = times * self.future_time_dt
+        normalized = times / (self.fut_ts * self.future_time_dt)
+        time_features = torch.stack((
+            normalized,
+            torch.sin(torch.pi * normalized),
+            torch.cos(torch.pi * normalized),
+            normalized.square()), dim=-1)
+        time_tokens = self.future_time_encoder(time_features.to(dtype))
+        return time_tokens.repeat(self.ego_fut_mode, 1).to(dtype)
 
     @force_fp32(apply_to=('bev_feats'))
     def forward(self,
@@ -319,6 +369,8 @@ class SAWorldHead(BaseModule):
         way_point = way_point.unsqueeze(0).expand(bs, -1, -1)
         wp_pos = wp_pos.permute(1, 0, 2)
         way_point = way_point.permute(1, 0, 2)
+        future_time_tokens = self._future_time_tokens(device, dtype)
+        way_point = way_point + future_time_tokens.unsqueeze(1)
 
         way_point = self.way_decoder(
                 query=way_point,
@@ -352,6 +404,22 @@ class SAWorldHead(BaseModule):
                 value=res_latent_query,
                 query_pos=res_latent_pos,
                 key_pos=res_latent_pos)
+
+        action_residual = None
+        if self.use_action_residual:
+            command_indices = self.action_dit._command_indices(
+                cmd, bs, device)
+            batch_indices = torch.arange(bs, device=device)
+            action_context = action_query[batch_indices, command_indices]
+            time_context = future_time_tokens.mean(dim=0).unsqueeze(0)
+            time_context = time_context.expand(bs, -1).to(action_context)
+            action_context = action_context + time_context
+            action_context = action_context.unsqueeze(0).expand(
+                res_latent_query.shape[0], -1, -1)
+            action_residual = self.action_residual_adapter(torch.cat(
+                (res_latent_query, action_context), dim=-1))
+            res_latent_query = res_latent_query + \
+                self.action_residual_weight * action_residual
         
         pred_bev = self.tokenfuser(res_latent_query.permute(1, 0, 2), bev_navi_embed) + bev_navi_embed
 
@@ -387,6 +455,8 @@ class SAWorldHead(BaseModule):
             'ego_fut_preds': outputs_ego_trajs,
             # 'ego_fut_preds': init_ego_trajs,
             'init_ego_fut_preds': init_ego_trajs,
+            'future_time_tokens': future_time_tokens,
+            'action_residual': action_residual,
         }
 
         if self.training and self.action_flow_loss_weight > 0:
