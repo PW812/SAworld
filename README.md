@@ -93,7 +93,7 @@ The training config uses eight data workers per GPU and `data.persistent_workers
 
 #### 4. Evaluate ResWorld model following:
 ```shell
-bash tools/dist_test.sh projects/configs/resworld/resworld_config.py work_dirs/resworld_config/epoch_12_ema.pth 4 --eval bbox
+ bash tools/dist_test.sh work_dirs/saworld_config/saworld_config.py work_dirs/saworld_config/epoch_12_ema.pth 8 --eval bbox
 ```
 The model after training is available [HERE](https://drive.google.com/file/d/12mlspkNBLhMrwpRZJGlC4hfWU07Yt9V9/view?usp=sharing).
 
