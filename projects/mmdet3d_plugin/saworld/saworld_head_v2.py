@@ -127,6 +127,7 @@ class SAWorldHeadV2Sample(BaseModule):
                  memory_frames=4,
                  memory_heads=8,
                  memory_max_gap=1.0,
+                 memory_fusion_init=0.0,
                  **kwargs):
         super().__init__()
         if kwargs.get('explicit_time_condition', False) or kwargs.get('use_action_residual', False):
@@ -198,20 +199,29 @@ class SAWorldHeadV2Sample(BaseModule):
             raise ValueError('memory_frames must be a nonnegative integer')
         if not isfinite(memory_max_gap) or memory_max_gap <= 0:
             raise ValueError('memory_max_gap must be positive, in seconds')
+        if not isfinite(memory_fusion_init):
+            raise ValueError('memory_fusion_init must be finite')
         self.memory_frames = memory_frames
         self.memory_max_gap = float(memory_max_gap)
         if memory_frames:
-            # Residual tokens first read ALL action tokens. ActionDiT slots are
-            # frequency coefficients; they must not be indexed by command ID.
-            self.memory_query_norm = nn.LayerNorm(self.embed_dims)
-            self.memory_key_norm = nn.LayerNorm(self.embed_dims)
-            self.memory_action_attn = nn.MultiheadAttention(
-                self.embed_dims, memory_heads, batch_first=True)
-            self.memory_attn = nn.MultiheadAttention(
-                self.embed_dims, memory_heads, batch_first=True)
-            self.memory_position = nn.Sequential(
-                nn.Linear(4, self.embed_dims), nn.ReLU(),
-                nn.Linear(self.embed_dims, self.embed_dims))
+            # Keep new memory parameters from consuming the RNG stream used
+            # by the original SAWorld layers. This makes the baseline branch
+            # initialization reproducible when memory is added.
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(20261111)
+                self.memory_query_norm = nn.LayerNorm(self.embed_dims)
+                self.memory_key_norm = nn.LayerNorm(self.embed_dims)
+                self.memory_action_attn = nn.MultiheadAttention(
+                    self.embed_dims, memory_heads, batch_first=True)
+                self.memory_attn = nn.MultiheadAttention(
+                    self.embed_dims, memory_heads, batch_first=True)
+                self.memory_position = nn.Sequential(
+                    nn.Linear(4, self.embed_dims), nn.ReLU(),
+                    nn.Linear(self.embed_dims, self.embed_dims))
+            # ReZero-style bounded residual: the initial model is exactly the
+            # current-scene SAWorld path, and memory influence is learned.
+            self.memory_fusion_gate = nn.Parameter(
+                torch.full((self.embed_dims,), float(memory_fusion_init)))
         self.last_memory_size = None
 
 
@@ -639,7 +649,8 @@ class SAWorldHeadV2Sample(BaseModule):
             points = self._reference_points(selection)
             retrieved = self.read_memory(current_scene, residual, action_query,
                                          points, history_points, ages, memory)
-            world_query = world_query + retrieved.permute(1, 0, 2)
+            memory_gate = torch.tanh(self.memory_fusion_gate).to(retrieved)
+            world_query = world_query + retrieved.permute(1, 0, 2) * memory_gate.view(1, 1, -1)
         world_query = self.res_latent_decoder(
             query=world_query, key=world_query, value=world_query,
             query_pos=position.permute(1, 0, 2), key_pos=position.permute(1, 0, 2))

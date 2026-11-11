@@ -131,6 +131,7 @@ model = dict(
         memory_frames=memory_frames,  # K past observations built independently per anchor.
         memory_heads=8,
         memory_max_gap=memory_max_gap,  # Maximum adjacent observation gap, in seconds.
+        memory_fusion_init=0.0,
         action_traj_dt=0.5,  # Future trajectory labels are sampled every 0.5 seconds.
         action_flow_loss_weight=0.1,
         latent_decoder=dict(
@@ -367,4 +368,4 @@ custom_hooks = [
     ),
 ]
 load_from = 'ckpts/geobev-r50-nuimage-cbgs.pth'
-work_dir = './work_dirs/saworld_v2_sample_memory'
+work_dir = './work_dirs/saworld_v2_sample_memory_stable'

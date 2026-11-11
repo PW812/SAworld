@@ -78,6 +78,8 @@ class MemoryTests(unittest.TestCase):
             torch.testing.assert_close(second[key], first[key], atol=0, rtol=0)
         self.assertFalse(hasattr(self.head, 'memory_embedding'))
         self.assertFalse(any('timestamp' in key for key in self.head.state_dict()))
+        self.assertTrue(torch.equal(self.head.memory_fusion_gate,
+                                    torch.zeros_like(self.head.memory_fusion_gate)))
         config.type, config.memory_frames = 'SAWorldHeadV2Sample', 0
         no_memory = build_head(config).eval()
         no_memory.load_state_dict(baseline.state_dict(), strict=True)
@@ -112,7 +114,19 @@ class MemoryTests(unittest.TestCase):
         self.assertIsNone(memory['residual'].grad)
         self.assertTrue((action.grad.norm(dim=-1) > 0).all())
         self.assertTrue(all(p.grad is not None and torch.isfinite(p.grad).all()
-                            for name, p in self.head.named_parameters() if name.startswith('memory_')))
+                            for name, p in self.head.named_parameters()
+                            if name.startswith('memory_') and name != 'memory_fusion_gate'))
+
+    def test_zero_gate_preserves_current_world_path_with_nonempty_memory(self):
+        inputs = self.inputs()
+        with torch.no_grad():
+            with_memory = self.head(**inputs)
+            inputs['bev_inputs'][2]['valid'][:] = False
+            without_memory = self.head(**inputs)
+        torch.testing.assert_close(with_memory['pred_bev'], without_memory['pred_bev'],
+                                   atol=0, rtol=0)
+        torch.testing.assert_close(with_memory['ego_fut_preds'], without_memory['ego_fut_preds'],
+                                   atol=0, rtol=0)
 
     def test_training_loss_with_mixed_history_lengths(self):
         self.head.train()
