@@ -411,8 +411,14 @@ class SAWorldHead(BaseModule):
                 cmd, bs, device)
             batch_indices = torch.arange(bs, device=device)
             action_context = action_query[batch_indices, command_indices]
-            time_context = future_time_tokens.mean(dim=0).unsqueeze(0)
-            time_context = time_context.expand(bs, -1).to(action_context)
+            time_sequence = future_time_tokens.view(
+                self.ego_fut_mode, self.fut_ts, self.embed_dims)[0]
+            time_sequence = time_sequence.to(action_context)
+            time_scores = torch.einsum(
+                'bc,tc->bt', action_context, time_sequence)
+            time_weights = time_scores.softmax(dim=-1)
+            time_context = torch.einsum(
+                'bt,tc->bc', time_weights, time_sequence)
             action_context = action_context + time_context
             action_context = action_context.unsqueeze(0).expand(
                 res_latent_query.shape[0], -1, -1)
