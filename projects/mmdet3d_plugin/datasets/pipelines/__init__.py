@@ -11,3 +11,4 @@ __all__ = [
     'CustomCollect3D', 'RandomScaleImageMultiViewImage', 
     'CustomObjectRangeFilter', 'CustomObjectNameFilter',
 ]
+from .memory import SAWorldMemoryMetadata

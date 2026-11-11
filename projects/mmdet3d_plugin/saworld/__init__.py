@@ -8,3 +8,4 @@ from .rcsample import *
 from .saworld import *
 from .saworld_head import *
 from .action_dit import *
+from .saworld_head_v2 import SAWorldHeadV2

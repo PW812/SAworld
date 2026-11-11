@@ -345,3 +345,25 @@ custom_hooks = [
 ]
 load_from = 'ckpts/geobev-r50-nuimage-cbgs.pth'
 work_dir = './work_dirs/saworld_explicit_time'
+
+
+# -------------- Planning --------------
+# plan_L2_1s:0.13624314597076073
+# plan_L2_2s:0.277192019028415
+# plan_L2_3s:0.5072571023595508
+# plan_obj_col_1s:0.0
+# plan_obj_col_2s:0.0
+# plan_obj_col_3s:6.511688674886516e-05
+# plan_obj_box_col_1s:9.767532721234616e-05
+# plan_obj_box_col_2s:0.0004395389724555577
+# plan_obj_box_col_3s:0.0017581559334865049
+# fut_valid_flag:1.0
+# plan_L2_stp3_1s:0.1813346603923876
+# plan_obj_col_stp3_1s:0.0
+# plan_obj_box_col_stp3_1s:0.0001953506544246923
+# plan_L2_stp3_2s:0.5179562702878281
+# plan_obj_col_stp3_2s:0.0
+# plan_obj_box_col_stp3_2s:0.0007814026176987692
+# plan_L2_stp3_3s:1.1416323716452093
+# plan_obj_col_stp3_3s:0.0001953506544246923
+# plan_obj_box_col_stp3_3s:0.005469818323891385
