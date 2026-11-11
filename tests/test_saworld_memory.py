@@ -1,18 +1,22 @@
-"""Run from SAWorld: python -m unittest discover -s tests -p test_saworld_memory.py."""
+"""CPU checks for independently rebuilt, detached SAWorld history memory."""
 import copy
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import torch
 from mmcv import Config
+from mmcv.parallel import collate
 from mmcv.runner import BaseModule
 from mmdet.models import build_head
 
-import projects.mmdet3d_plugin  # noqa: F401, registers the head and sampler
+import projects.mmdet3d_plugin  # register project components
+from projects.mmdet3d_plugin.saworld.saworld_v2 import SAWorldV2
+from projects.mmdet3d_plugin.datasets.nuscenes_saworld_memory_dataset import SAWorldMemoryNuScenesDataset
+from projects.mmdet3d_plugin.datasets.nuscenes_resworld_dataset import ResWorldCustomNuScenesDataset
 from projects.mmdet3d_plugin.datasets.pipelines.memory import SAWorldMemoryMetadata
-from projects.mmdet3d_plugin.datasets.samplers.scene_sampler import SAWorldSceneSampler
-
 
 CONFIG = Path(__file__).resolve().parents[1] / 'projects/configs/saworld/saworld_config_v2_memory.py'
 
@@ -25,10 +29,10 @@ def head_config():
     return config
 
 
-def metadata(frame, scene='scene-a', pose=None, timestamp=None):
+def metadata(frame, scene='a', pose=None):
     return dict(scene_token=scene, sample_idx=f'{scene}-{frame}',
                 prev_idx=f'{scene}-{frame-1}' if frame else '',
-                memory_timestamp=1_500_000_000.0 + frame * .5 if timestamp is None else timestamp,
+                memory_timestamp=1_500_000_000.0 + frame * .5,
                 memory_ego2global=np.eye(4) if pose is None else pose)
 
 
@@ -41,165 +45,176 @@ class MemoryTests(unittest.TestCase):
         torch.manual_seed(7)
         self.head = build_head(head_config()).eval()
 
-    def tensors(self, batch=2):
-        return (torch.randn(batch, 16, 256), torch.randn(batch, 16, 256),
-                torch.randn(batch, 16, 3))
+    def memory(self, batch=2):
+        shape = (batch, 4, 16, 256)
+        return dict(scene=torch.randn(shape), residual=torch.randn(shape),
+                    points=torch.randn(batch, 4, 16, 3, dtype=torch.float64),
+                    timestamp=torch.tensor([[metadata(f)['memory_timestamp'] for f in range(4)]] * batch,
+                                           dtype=torch.float64),
+                    valid=torch.ones(batch, 4, dtype=torch.bool))
 
-    def update(self, metas, scene, residual, points):
-        times, poses = self.head._memory_metadata(metas, residual)
-        relative, ages = self.head.pre_update_memory(metas, residual, times, poses)
-        self.head.post_update_memory(metas, scene, residual, points, times, poses)
-        return relative, ages
-
-    def test_fifo_capacity_and_detachment(self):
-        self.assertEqual(type(self.head).__bases__, (BaseModule,))
-        scene, residual, points = self.tensors()
-        residual.requires_grad_(True)
-        for frame in range(7):
-            self.update([metadata(frame), metadata(frame, 'scene-b')],
-                        scene, residual + frame, points)
-            self.assertEqual(self.head.last_memory_size.tolist(), [min(frame, 4)] * 2)
-            self.assertEqual(tuple(self.head.memory_embedding.shape), (2, 4, 16, 256))
-            self.assertIsNone(self.head.memory_embedding.grad_fn)
-            self.assertFalse(self.head.memory_embedding.requires_grad)
-        torch.testing.assert_close(self.head.memory_embedding[:, 0], residual.detach() + 6)
-        torch.testing.assert_close(self.head.memory_embedding[:, -1], residual.detach() + 3)
-        self.assertFalse(any(key.startswith(('memory_embedding', 'memory_scene',
-                                             'memory_timestamp', 'memory_valid',
-                                             'memory_reference_point')) for key in self.head.state_dict()))
-
-    def test_reset_is_per_slot_and_causal(self):
-        scene, residual, points = self.tensors()
-        self.update([metadata(0), metadata(0, 'scene-b')], scene, residual, points)
-        self.update([metadata(1), metadata(0, 'scene-c')], scene, residual, points)
-        self.assertEqual(self.head.last_memory_size.tolist(), [1, 0])
-        # A repeat/backward timestamp and a wrong predecessor each reset.
-        metas = [metadata(1), metadata(2, 'scene-c')]
-        self.update(metas, scene, residual, points)
-        self.assertEqual(self.head.last_memory_size.tolist(), [0, 0])
-        metas = [metadata(2, timestamp=1_500_000_010.), metadata(3, 'scene-c')]
-        self.update(metas, scene, residual, points)
-        self.assertEqual(self.head.last_memory_size.tolist(), [0, 1])
-        self.head.epoch = 1
-        self.update([metadata(3), metadata(4, 'scene-c')], scene, residual, points)
-        self.assertEqual(self.head.last_memory_size.tolist(), [0, 0])
-        self.head.train()
-        self.assertIsNone(self.head.memory_embedding)
-
-    def test_pose_alignment_and_real_time_age(self):
-        scene, residual, points = self.tensors(batch=1)
-        points[:] = torch.tensor([3., 2., 0.])
-        old_pose = np.eye(4)
-        old_pose[0, 3] = 10
-        self.update([metadata(0, pose=old_pose)], scene, residual, points)
-        pose = np.array([[0., -1., 0., 11.], [1., 0., 0., 0.],
-                         [0., 0., 1., 0.], [0., 0., 0., 1.]])
-        metas = [metadata(1, pose=pose)]
-        times, poses = self.head._memory_metadata(metas, residual)
-        relative, age = self.head.pre_update_memory(metas, residual, times, poses)
-        torch.testing.assert_close(relative[0, 0, 0], torch.tensor([2., -2., 0.]))
-        self.assertEqual(float(age[0, 0]), .5)
-        self.assertEqual(self.head.memory_timestamp.dtype, torch.float64)
-
-    def test_empty_bank_and_all_action_slots(self):
-        scene, residual, points = self.tensors(batch=1)
-        metas = [metadata(0)]
-        times, poses = self.head._memory_metadata(metas, residual)
-        relative, ages = self.head.pre_update_memory(metas, residual, times, poses)
-        action = torch.randn(1, 3, 256, requires_grad=True)
-        output = self.head.read_memory(scene, residual, action, points, relative, ages)
-        torch.testing.assert_close(output, torch.zeros_like(output), atol=0, rtol=0)
-        output.sum().backward()
-        self.assertTrue(all(p.grad is not None for name, p in self.head.named_parameters()
-                            if name.startswith('memory_')))
-        self.head.zero_grad(set_to_none=True)
-        self.head.post_update_memory(metas, scene, residual, points, times, poses)
-        times, poses = self.head._memory_metadata([metadata(1)], residual)
-        relative, ages = self.head.pre_update_memory([metadata(1)], residual, times, poses)
-        action = torch.randn(1, 3, 256, requires_grad=True)
-        output = self.head.read_memory(scene, residual, action, points, relative, ages)
-        output.square().mean().backward()
-        self.assertTrue((action.grad.norm(dim=-1) > 0).all())
-        changed = action.detach().clone()
-        changed[:, 2] += 3
-        other = self.head.read_memory(scene, residual, changed, points, relative, ages)
-        self.assertFalse(torch.allclose(output, other))
-
-    def inputs(self, frame):
-        return dict(bev_inputs=[torch.randn(6, 256, 4, 4), torch.randn(2, 3, 18)],
-                    img_metas=[metadata(frame), metadata(frame, 'scene-b')],
+    def inputs(self, frame=4):
+        return dict(bev_inputs=[torch.randn(6, 256, 4, 4), torch.randn(2, 3, 18), self.memory()],
+                    img_metas=[metadata(frame), metadata(frame, 'b')],
                     cmd=torch.tensor([[[[1., 0., 0.]]], [[[0., 0., 1.]]]]),
-                    ego_his_trajs=torch.zeros(2, 1, 2, 2),
-                    ego_lcf_feat=torch.zeros(2, 1, 1, 9))
+                    ego_his_trajs=torch.zeros(2, 1, 2, 2), ego_lcf_feat=torch.zeros(2, 1, 1, 9))
 
-    def test_first_frame_matches_baseline_and_zero_memory_ablation(self):
+    def test_no_cross_batch_cache_and_empty_equals_baseline(self):
+        self.assertEqual(type(self.head).__bases__, (BaseModule,))
         config = head_config()
         config.type = 'SAWorldHead'
         baseline = build_head(config).eval()
-        common = baseline.state_dict()
-        self.head.load_state_dict(common, strict=False)
-        inputs = self.inputs(0)
+        self.head.load_state_dict(baseline.state_dict(), strict=False)
+        inputs = self.inputs()
+        inputs['bev_inputs'][2]['valid'][:] = False
+        baseline_inputs = dict(inputs, bev_inputs=inputs['bev_inputs'][:2])
         with torch.no_grad():
-            expected = baseline(**inputs)
-            actual = self.head(**inputs)
+            expected = baseline(**baseline_inputs)
+            first = self.head(**inputs)
+            self.head(**self.inputs())
+            second = self.head(**inputs)
         for key in ('init_ego_fut_preds', 'ego_fut_preds', 'pred_bev'):
-            torch.testing.assert_close(actual[key], expected[key], atol=0, rtol=0)
-        config.type, config.memory_frames = 'SAWorldHeadV2', 0
+            torch.testing.assert_close(first[key], expected[key], atol=0, rtol=0)
+            torch.testing.assert_close(second[key], first[key], atol=0, rtol=0)
+        self.assertFalse(hasattr(self.head, 'memory_embedding'))
+        self.assertFalse(any('timestamp' in key for key in self.head.state_dict()))
+        config.type, config.memory_frames = 'SAWorldHeadV2Sample', 0
         no_memory = build_head(config).eval()
-        no_memory.load_state_dict(common, strict=True)
+        no_memory.load_state_dict(baseline.state_dict(), strict=True)
         with torch.no_grad():
-            actual = no_memory(**inputs)
+            actual = no_memory(**baseline_inputs)
         torch.testing.assert_close(actual['ego_fut_preds'], expected['ego_fut_preds'], atol=0, rtol=0)
 
-    def test_training_loss_and_second_frame_backward(self):
+    def test_alignment_and_future_rejection(self):
+        memory = self.memory(batch=1)
+        memory['points'][:] = torch.tensor([13., 2., 0.], dtype=torch.float64)
+        pose = np.array([[0., -1., 0., 11.], [1., 0., 0., 0.],
+                         [0., 0., 1., 0.], [0., 0., 0., 1.]])
+        residual = torch.zeros(1, 16, 256)
+        relative, ages = self.head.align_memory(memory, [metadata(4, pose=pose)], residual)
+        torch.testing.assert_close(relative[0, 0, 0], torch.tensor([2., -2., 0.]))
+        torch.testing.assert_close(ages[0], torch.tensor([2., 1.5, 1., .5]))
+        with self.assertRaisesRegex(ValueError, 'strictly before'):
+            self.head.align_memory(memory, [metadata(3)], residual)
+        with self.assertRaisesRegex(ValueError, 'sample history'):
+            self.head.align_memory(None, [metadata(4)], residual)
+
+    def test_memory_detached_but_current_action_and_reader_have_gradients(self):
+        memory = self.memory(batch=1)
+        memory['scene'].requires_grad_(True)
+        memory['residual'].requires_grad_(True)
+        residual, scene, points = torch.randn(1, 16, 256), torch.randn(1, 16, 256), torch.randn(1, 16, 3)
+        action = torch.randn(1, 3, 256, requires_grad=True)
+        relative, ages = self.head.align_memory(memory, [metadata(4)], residual)
+        retrieved = self.head.read_memory(scene, residual, action, points, relative, ages, memory)
+        retrieved.square().mean().backward()
+        self.assertIsNone(memory['scene'].grad)
+        self.assertIsNone(memory['residual'].grad)
+        self.assertTrue((action.grad.norm(dim=-1) > 0).all())
+        self.assertTrue(all(p.grad is not None and torch.isfinite(p.grad).all()
+                            for name, p in self.head.named_parameters() if name.startswith('memory_')))
+
+    def test_training_loss_with_mixed_history_lengths(self):
         self.head.train()
-        for frame in (0, 1):
-            inputs = self.inputs(frame)
+        for history_length in (0, 4):
+            inputs = self.inputs()
+            inputs['bev_inputs'][2]['valid'][0] = False
+            inputs['bev_inputs'][2]['valid'][1] = history_length > 0
             output = self.head(**inputs)
+            self.assertEqual(output['memory_valid_frames'].tolist(), [0, history_length])
             losses = self.head.loss(None, None, None, None, output,
-                                    torch.randn(2, 1, 6, 2), torch.ones(2, 1, 1, 6),
-                                    inputs['cmd'], None)
+                                    torch.randn(2, 1, 6, 2), torch.ones(2, 1, 1, 6), inputs['cmd'], None)
             self.assertEqual(set(losses), {'loss_plan_reg', 'loss_plan_reg_init', 'loss_action_flow'})
             total = sum(losses.values())
             self.assertTrue(torch.isfinite(total))
             total.backward()
-            memory_grads = [p.grad for name, p in self.head.named_parameters() if name.startswith('memory_')]
-            self.assertTrue(all(g is not None and torch.isfinite(g).all() for g in memory_grads))
-            if frame:
-                self.assertGreater(sum(float(g.abs().sum()) for g in memory_grads), 0)
+            grads = [p.grad for name, p in self.head.named_parameters() if name.startswith('memory_')]
+            self.assertTrue(all(g is not None and torch.isfinite(g).all() for g in grads))
+            if history_length:
+                self.assertGreater(sum(float(g.abs().sum()) for g in grads), 0)
             self.head.zero_grad(set_to_none=True)
 
-    def test_metadata_uses_camera_ego_and_inverse_bda(self):
-        camera_ego = torch.eye(4).unsqueeze(0)
-        camera_ego[0, 0, 3] = 10
-        bda = torch.diag(torch.tensor([-2., 2., 2.]))
-        results = dict(img_inputs=[None, None, camera_ego, None, None, None, bda], timestamp=123.5)
-        output = SAWorldMemoryMetadata()(results)
-        np.testing.assert_allclose(output['memory_ego2global'] @ np.array([2., 4., 0., 1.]),
-                                   np.array([9., 2., 0., 1.]))
-        self.assertEqual(output['memory_timestamp'], 123.5)
+    def fake_detector(self):
+        model = SAWorldV2.__new__(SAWorldV2)
+        torch.nn.Module.__init__(model)
+        model.pts_bbox_head = self.head
+        model.test_bn = torch.nn.BatchNorm2d(256)
+        def extract(instance, inputs, metas):
+            images = inputs[0].transpose(0, 1).flatten(0, 1)
+            return [instance.test_bn(images)], None
+        model.extract_img_feat = types.MethodType(extract, model)
+        return model
 
-    def test_scene_sampler_preserves_slot_order_and_coverage(self):
-        infos = [dict(scene_token=f'scene-{s}', timestamp=t)
-                 for t in range(9) for s in range(5) if t <= 4 + s]
-        class Dataset:
-            data_infos = infos
-            def __len__(self):
-                return len(self.data_infos)
-        dataset = Dataset()
-        rank_samples = []
-        for rank in (0, 1):
-            sampler = SAWorldSceneSampler(dataset, samples_per_gpu=2, num_replicas=2, rank=rank)
-            samples = list(sampler)
-            self.assertEqual(len(samples), len(sampler))
-            rank_samples.extend(samples)
-            for slot in (samples[::2], samples[1::2]):
-                for i, j in zip(slot, slot[1:]):
-                    if infos[i]['scene_token'] == infos[j]['scene_token']:
-                        self.assertEqual(infos[j]['timestamp'], infos[i]['timestamp'] + 1)
-            sampler.set_epoch(1)
-            self.assertNotEqual(samples, list(sampler))
-        self.assertEqual(set(rank_samples), set(range(len(dataset))))
+    def history_entry(self, frame, scene='a'):
+        return dict(img_inputs=[torch.randn(3, 256, 4, 4)] + [torch.zeros(1)] * 6,
+                    can_bus=torch.randn(3, 18), img_metas=metadata(frame, scene))
+
+    def test_history_encoder_does_not_change_bn_and_restores_modes(self):
+        model = self.fake_detector().train()
+        head_flags = [m.training for m in model.modules()]
+        mean, count = model.test_bn.running_mean.clone(), model.test_bn.num_batches_tracked.clone()
+        history = [[self.history_entry(i) for i in range(4)],
+                   [None, None, None, self.history_entry(0, 'b')]]
+        cmd = self.inputs()['cmd']
+        memory = model.build_history_memory(history, [metadata(4), metadata(1, 'b')], cmd)
+        self.assertEqual(memory['valid'].sum(1).tolist(), [4, 1])
+        self.assertTrue(all(not value.requires_grad and value.grad_fn is None for value in memory.values()))
+        torch.testing.assert_close(mean, model.test_bn.running_mean, atol=0, rtol=0)
+        torch.testing.assert_close(count, model.test_bn.num_batches_tracked, atol=0, rtol=0)
+        self.assertEqual(head_flags, [m.training for m in model.modules()])
+        model.build_history_memory([[None] * 4] * 2, [metadata(0), metadata(0, 'b')], cmd)
+        again = model.build_history_memory(history, [metadata(4), metadata(1, 'b')], cmd)
+        for key in memory:
+            torch.testing.assert_close(again[key], memory[key], atol=0, rtol=0)
+        with self.assertRaisesRegex(ValueError, 'same-scene'):
+            model.build_history_memory(history, [metadata(4, 'wrong'), metadata(1, 'b')], cmd)
+
+    def test_history_selection_uses_prev_chain_and_scene_boundary(self):
+        dataset = SAWorldMemoryNuScenesDataset.__new__(SAWorldMemoryNuScenesDataset)
+        dataset.memory_frames, dataset.memory_max_gap = 4, 1.
+        dataset.data_infos = [dict(token=f'a{i}', prev=f'a{i-1}' if i else '',
+                                   scene_token='a', timestamp=i*500000) for i in range(6)]
+        dataset.data_infos.append(dict(token='b0', prev='a5', scene_token='b', timestamp=3000000))
+        dataset._token_to_index = {info['token']: i for i, info in enumerate(dataset.data_infos)}
+        self.assertEqual(dataset._history_indices(0), [None] * 4)
+        self.assertEqual(dataset._history_indices(2), [None, None, 0, 1])
+        self.assertEqual(dataset._history_indices(5), [1, 2, 3, 4])
+        self.assertEqual(dataset._history_indices(6), [None] * 4)
+        with patch.object(ResWorldCustomNuScenesDataset, 'prepare_train_data', return_value=None):
+            with patch.object(dataset, '_history_indices', side_effect=AssertionError('rejected anchor loaded history')):
+                self.assertIsNone(dataset.prepare_train_data(5))
+
+    def test_cpu_only_history_collates_independent_clips(self):
+        from mmcv.parallel import DataContainer as DC
+        clips = [[None, None, None, self.history_entry(0)],
+                 [self.history_entry(i, 'b') for i in range(4)]]
+        result = collate([dict(history_memory=DC(clip, cpu_only=True)) for clip in clips], samples_per_gpu=2)
+        actual = result['history_memory'].data[0]
+        self.assertEqual(len(actual), 2)
+        self.assertIsNone(actual[0][0])
+        self.assertEqual(actual[1][3]['img_metas']['sample_idx'], 'b-3')
+
+    def test_config_matches_random_anchor_training(self):
+        cfg = Config.fromfile(str(CONFIG))
+        self.assertEqual(cfg.data.shuffler_sampler.type, 'DistributedGroupSampler')
+        self.assertTrue(cfg.data.train.filter_empty_gt)
+        self.assertEqual(cfg.model.type, 'SAWorldV2')
+        self.assertEqual(cfg.model.pts_bbox_head.type, 'SAWorldHeadV2Sample')
+        self.assertEqual(cfg.model.pts_bbox_head.memory_frames, cfg.data.train.memory_frames)
+
+    def test_legacy_registry_retains_streaming_forward(self):
+        config = head_config()
+        config.type = 'SAWorldHeadV2'
+        legacy = build_head(config).eval()
+        self.assertTrue(type(legacy).__module__.endswith('saworld_head_v2_streaming'))
+        self.assertTrue(type(self.head).__module__.endswith('saworld_head_v2'))
+        with torch.no_grad():
+            for frame in (0, 1):
+                inputs = self.inputs(frame=frame)
+                inputs['bev_inputs'] = inputs['bev_inputs'][:2]
+                output = legacy(**inputs)
+                self.assertTrue(torch.isfinite(output['ego_fut_preds']).all())
+                self.assertEqual(legacy.last_memory_size.tolist(), [frame, frame])
 
 
 if __name__ == '__main__':

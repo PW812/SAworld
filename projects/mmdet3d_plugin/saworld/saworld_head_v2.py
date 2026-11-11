@@ -1,8 +1,8 @@
 """SAWorld V2: sparse residual memory with action-conditioned retrieval.
 
-The detached FIFO, scene refresh and global reference-point storage follow the
-memory lifecycle in StreamPETR (https://github.com/exiawsh/StreamPETR). Memory
-entries are observed scene/residual tokens, not detected object queries.
+Detached sparse history and global reference points are inspired by StreamPETR
+(https://github.com/exiawsh/StreamPETR). History is rebuilt independently for
+randomly sampled anchors; no state is inherited across batches.
 This head is implemented independently of SAWorldHead.
 """
 from math import isfinite
@@ -78,18 +78,11 @@ class SELayerMLP(nn.Module):
         return x * self.gate(x_se)
 
 @HEADS.register_module()
-class SAWorldHeadV2(BaseModule):
-    """Keep K past frames independently for each batch slot.
+class SAWorldHeadV2Sample(BaseModule):
+    """Read K detached history frames supplied by the current sample.
 
-    Each frame stores N scene keys, N residual values, N coarse spatial anchors,
-    and one timestamp in seconds. Anchors are TokenLearner-weighted BEV centres;
-    they are not object centres and are not propagated using object velocities.
-    Historical values never retain an autograd graph or enter a checkpoint.
-
-    Training requires consecutive samples in each batch slot. ``prev_idx``,
-    ``sample_idx`` and ``scene_token`` identify continuity; otherwise that slot
-    is refreshed. ``memory_ego2global`` maps the actual BEV coordinate system to
-    global coordinates, including inverse BEV augmentation when present.
+    No cache survives a forward call. Historical scene/residual tokens are
+    re-encoded with the current weights, in eval mode and without gradients.
     """
 
     def __init__(self,
@@ -160,7 +153,7 @@ class SAWorldHeadV2(BaseModule):
         self.grid_size = torch.tensor([grid_config['x'][2], grid_config['y'][2]])
         self.use_action = use_action
         if not self.use_action:
-            raise ValueError('SAWorldHeadV2 requires use_action=True')
+            raise ValueError('SAWorldHeadV2Sample requires use_action=True')
         # ActionDiT 只读取观测场景；专家轨迹在 loss() 中单独监督 flow。
         if self.use_action :
             self.action_dit_cfg = dict(
@@ -219,7 +212,7 @@ class SAWorldHeadV2(BaseModule):
             self.memory_position = nn.Sequential(
                 nn.Linear(4, self.embed_dims), nn.ReLU(),
                 nn.Linear(self.embed_dims, self.embed_dims))
-        self.reset_memory()
+        self.last_memory_size = None
 
 
     def _init_layers(self):
@@ -287,42 +280,12 @@ class SAWorldHeadV2(BaseModule):
                 ego_velocity=None
             ):
 
-        bev_feats, can_bus_infos = bev_inputs
-        bt, c, h, w = bev_feats.shape
-        bs = bt // self.num_frames
-        dtype = bev_feats[0].dtype
-        device = bev_feats[0].device
-        can_bus_infos = self.canbus_mlp(can_bus_infos.permute(1, 0, 2)).view(bt, 1, self.in_channels)
-        bev_embed = self.canbus_se(bev_feats.view(bt, c, h*w).permute(0, 2, 1), can_bus_infos)
-        bev_embed_single = bev_embed.clone()
-        bev_embed = bev_embed.permute(0, 2, 1).view(self.num_frames, bs, c, h, w).permute(1, 0, 2, 3, 4)
-        bev_embed = self.bev_fusion_conv(bev_embed.reshape(bs, self.num_frames * c, h, w))
-        bev_feats = bev_feats.view(self.num_frames, bs, c, h, w)
-
-
-        bev_mask = torch.zeros((bs, self.bev_h, self.bev_w),
-                               device=bev_feats.device).to(dtype)
-        bev_pos = self.positional_encoding(bev_mask).to(dtype)
-
-        pos_embd = bev_pos.flatten(2).permute(0, 2, 1)
-        bev_embed = bev_embed.reshape(bs, c, h * w).permute(0, 2, 1)
-
-        navi_embed = []
-        for bidx in range(bs):
-            cmd_idx = torch.nonzero(cmd[bidx, 0, 0])[0, 0]
-            navi_embed.append(self.navi_embedding.weight[cmd_idx][None, None])
-        navi_embed = torch.cat(navi_embed, dim=0)
-
-        bev_navi_embed = self.navi_se(bev_embed, navi_embed)
-
-        bev_query = torch.cat((bev_navi_embed, pos_embd), -1)
-
-        learned_latent_query, selected = self.tokenlearner(bev_query)
-        _, res_selected = self.res_tokenlearner(bev_query)
-        bev_embed_single = torch.cat((bev_embed_single, pos_embd.repeat(self.num_frames,1,1)), -1)
-        bev_embed_single = torch.einsum('bsi,bic->bsc', res_selected.repeat(self.num_frames,1,1), bev_embed_single)\
-                            .view(self.num_frames, bs, learned_latent_query.shape[1],learned_latent_query.shape[2])
-        res_latent_query_all = bev_embed_single[:-1] - bev_embed_single[1:]
+        bev_feats = bev_inputs[0]
+        bs = bev_feats.shape[0] // self.num_frames
+        dtype, device = bev_feats.dtype, bev_feats.device
+        memory = bev_inputs[2] if len(bev_inputs) > 2 else None
+        (bev_embed, bev_navi_embed, learned_latent_query,
+         bev_embed_single, res_selected, res_latent_query_all) = self._encode_scene(bev_inputs, cmd)
 
         learned_latent_query=learned_latent_query.permute(1, 0, 2)
         latent_query, latent_pos = torch.split(
@@ -383,7 +346,7 @@ class SAWorldHeadV2(BaseModule):
             res_latent_query_all, bev_embed_single[0, ..., :self.embed_dims],
             res_selected, bev_navi_embed, init_wp_vector,
             action_query if self.use_action else None,
-            img_metas)
+            img_metas, memory)
 
         way_point = self.col_attn(
                 query=way_point,
@@ -537,21 +500,60 @@ class SAWorldHeadV2(BaseModule):
 
         return loss_dict
 
-    def reset_memory(self):
-        self.memory_embedding = None
-        self.memory_scene = None
-        self.memory_reference_point = None
-        self.memory_timestamp = None
-        self.memory_valid = None
-        self._memory_scenes = None
-        self._memory_samples = None
-        self._memory_epoch = getattr(self, 'epoch', None)
-        self.last_memory_size = None
+    def _encode_scene(self, bev_inputs, cmd):
+        """Shared observed-scene extraction for the anchor and its past frames."""
+        bev_feats, can_bus_infos = bev_inputs[:2]
+        bt, c, h, w = bev_feats.shape
+        bs = bt // self.num_frames
+        dtype = bev_feats[0].dtype
+        device = bev_feats[0].device
+        can_bus_infos = self.canbus_mlp(can_bus_infos.permute(1, 0, 2)).view(bt, 1, self.in_channels)
+        bev_embed = self.canbus_se(bev_feats.view(bt, c, h*w).permute(0, 2, 1), can_bus_infos)
+        bev_embed_single = bev_embed.clone()
+        bev_embed = bev_embed.permute(0, 2, 1).view(self.num_frames, bs, c, h, w).permute(1, 0, 2, 3, 4)
+        bev_embed = self.bev_fusion_conv(bev_embed.reshape(bs, self.num_frames * c, h, w))
+        bev_feats = bev_feats.view(self.num_frames, bs, c, h, w)
 
-    def train(self, mode=True):
-        if mode != self.training:
-            self.reset_memory()
-        return super().train(mode)
+
+        bev_mask = torch.zeros((bs, self.bev_h, self.bev_w),
+                               device=bev_feats.device).to(dtype)
+        bev_pos = self.positional_encoding(bev_mask).to(dtype)
+
+        pos_embd = bev_pos.flatten(2).permute(0, 2, 1)
+        bev_embed = bev_embed.reshape(bs, c, h * w).permute(0, 2, 1)
+
+        navi_embed = []
+        for bidx in range(bs):
+            cmd_idx = torch.nonzero(cmd[bidx, 0, 0])[0, 0]
+            navi_embed.append(self.navi_embedding.weight[cmd_idx][None, None])
+        navi_embed = torch.cat(navi_embed, dim=0)
+
+        bev_navi_embed = self.navi_se(bev_embed, navi_embed)
+
+        bev_query = torch.cat((bev_navi_embed, pos_embd), -1)
+
+        learned_latent_query, selected = self.tokenlearner(bev_query)
+        _, res_selected = self.res_tokenlearner(bev_query)
+        bev_embed_single = torch.cat((bev_embed_single, pos_embd.repeat(self.num_frames,1,1)), -1)
+        bev_embed_single = torch.einsum('bsi,bic->bsc', res_selected.repeat(self.num_frames,1,1), bev_embed_single)\
+                            .view(self.num_frames, bs, learned_latent_query.shape[1],learned_latent_query.shape[2])
+        res_latent_query_all = bev_embed_single[:-1] - bev_embed_single[1:]
+
+        return (bev_embed, bev_navi_embed, learned_latent_query,
+                bev_embed_single, res_selected, res_latent_query_all)
+
+    @torch.no_grad()
+    def encode_memory(self, bev_inputs, cmd, img_metas):
+        """Encode observations only; no action rollout or world prediction."""
+        _, _, _, per_frame, selection, residuals = self._encode_scene(bev_inputs, cmd)
+        scene = per_frame[0, ..., :self.embed_dims]
+        residual = residuals[0, ..., :self.embed_dims]
+        points = self._reference_points(selection)
+        times, poses = self._memory_metadata(img_metas, residual)
+        global_points = torch.einsum('bij,bnj->bni', poses[:, :3, :3], points.double())
+        global_points = global_points + poses[:, None, :3, 3]
+        return dict(scene=scene.detach(), residual=residual.detach(),
+                    points=global_points.detach(), timestamp=times.detach())
 
     def _memory_metadata(self, img_metas, reference):
         required = ('scene_token', 'sample_idx', 'prev_idx',
@@ -571,45 +573,22 @@ class SAWorldHeadV2(BaseModule):
             raise ValueError('memory needs finite timestamps and [B,4,4] BEV-to-global poses')
         return times, poses
 
-    def pre_update_memory(self, img_metas, reference, times, poses):
-        """Refresh invalid slots and express historical anchors in current BEV."""
-        batch, tokens, channels = reference.shape
-        shape = (batch, self.memory_frames, tokens, channels)
-        if (self.memory_embedding is None or self.memory_embedding.shape != shape
-                or self.memory_embedding.device != reference.device
-                or self.memory_embedding.dtype != reference.dtype
-                or self._memory_epoch != getattr(self, 'epoch', None)):
-            self.reset_memory()
-            self.memory_embedding = reference.new_zeros(shape)
-            self.memory_scene = reference.new_zeros(shape)
-            self.memory_reference_point = poses.new_zeros(shape[:-1] + (3,))
-            self.memory_timestamp = times.new_zeros(batch, self.memory_frames)
-            self.memory_valid = torch.zeros(batch, self.memory_frames,
-                                            dtype=torch.bool, device=reference.device)
-            self._memory_scenes = [None] * batch
-            self._memory_samples = [None] * batch
-        same_stream = torch.tensor([
-            meta['scene_token'] == self._memory_scenes[i]
-            and meta['prev_idx'] == self._memory_samples[i]
-            and bool(meta.get('prev_exists', True))
-            for i, meta in enumerate(img_metas)
-        ], device=reference.device, dtype=torch.bool)
-        elapsed = times - self.memory_timestamp[:, 0]
-        continuous = same_stream & (elapsed > 0) & (elapsed <= self.memory_max_gap)
-        self.memory_valid = self.memory_valid & continuous[:, None]
-        # Replace tensors rather than modifying storage saved by attention's
-        # backward pass. Empty/padded slots also have finite geometry.
-        keep = self.memory_valid[:, :, None, None]
-        self.memory_embedding = self.memory_embedding.masked_fill(~keep, 0)
-        self.memory_scene = self.memory_scene.masked_fill(~keep, 0)
-        self.memory_reference_point = self.memory_reference_point.masked_fill(~keep, 0)
-        self.memory_timestamp = torch.where(self.memory_valid, self.memory_timestamp, times[:, None])
+    def align_memory(self, memory, img_metas, residual):
+        if memory is None:
+            raise ValueError('V2 requires sample history; use SAWorldV2 and the memory dataset')
+        times, poses = self._memory_metadata(img_metas, residual)
+        valid = memory['valid']
+        expected = (residual.shape[0], self.memory_frames, self.num_scenes, self.embed_dims)
+        if memory['residual'].shape != expected or valid.shape != expected[:2]:
+            raise ValueError('dataset/head memory_frames or token shapes do not match')
+        ages = times[:, None] - memory['timestamp']
+        if ((ages <= 0) & valid).any():
+            raise ValueError('Memory must contain only observations strictly before the anchor')
         inverse = torch.linalg.inv(poses)
-        points = torch.einsum('bij,bknj->bkni', inverse[:, :3, :3], self.memory_reference_point)
+        points = torch.einsum('bij,bknj->bkni', inverse[:, :3, :3], memory['points'])
         points = points + inverse[:, None, None, :3, 3]
-        ages = times[:, None] - self.memory_timestamp
-        self.last_memory_size = self.memory_valid.sum(dim=1).detach()
-        return points.to(reference), ages.to(reference)
+        self.last_memory_size = valid.sum(dim=1).detach()
+        return points.to(residual), ages.masked_fill(~valid, 0).to(residual)
 
     def _reference_points(self, selection):
         """Coarse token anchors in the existing RCSample BEV convention.
@@ -626,7 +605,7 @@ class SAWorldHeadV2(BaseModule):
         grid = torch.stack((xx, yy, torch.zeros_like(xx)), dim=-1).flatten(0, 1)
         return torch.einsum('bnp,pc->bnc', selection, grid)
 
-    def read_memory(self, current_scene, residual, action, points, history_points, ages):
+    def read_memory(self, current_scene, residual, action, points, history_points, ages, memory):
         """Action-conditioned queries retrieve historical residual values."""
         batch, tokens, channels = residual.shape
         query = self.memory_query_norm(current_scene + residual)
@@ -636,10 +615,10 @@ class SAWorldHeadV2(BaseModule):
         age_features = ages[:, :, None, None].expand(-1, -1, tokens, 1)
         key_position = torch.cat((history_points / 50., age_features), dim=-1)
         query = query + action_context + self.memory_position(query_position)
-        keys = self.memory_key_norm(self.memory_scene).flatten(1, 2)
+        keys = self.memory_key_norm(memory['scene'].detach()).flatten(1, 2)
         keys = keys + self.memory_position(key_position).flatten(1, 2)
-        values = self.memory_embedding.flatten(1, 2)
-        valid = self.memory_valid[:, :, None].expand(-1, -1, tokens).flatten(1, 2)
+        values = memory['residual'].detach().flatten(1, 2)
+        valid = memory['valid'][:, :, None].expand(-1, -1, tokens).flatten(1, 2)
         # A dummy token is valid only for an empty bank: softmax never sees an
         # all-masked row. Multiply by availability to make the cold start exact.
         has_history = valid.any(dim=1)
@@ -650,37 +629,19 @@ class SAWorldHeadV2(BaseModule):
                                      key_padding_mask=padding, need_weights=False)[0]
         return retrieved * has_history[:, None, None].to(retrieved.dtype)
 
-    @torch.no_grad()
-    def post_update_memory(self, img_metas, scene, residual, points, times, poses):
-        """Write the current OBSERVED tokens after reading the past K frames."""
-        global_points = torch.einsum('bij,bnj->bni', poses[:, :3, :3], points.double())
-        global_points = global_points + poses[:, None, :3, 3]
-        def prepend(current, history):
-            return torch.cat((current.detach().unsqueeze(1), history[:, :self.memory_frames - 1]), dim=1)
-        self.memory_embedding = prepend(residual, self.memory_embedding)
-        self.memory_scene = prepend(scene, self.memory_scene)
-        self.memory_reference_point = prepend(global_points, self.memory_reference_point)
-        self.memory_timestamp = prepend(times, self.memory_timestamp)
-        self.memory_valid = prepend(torch.ones_like(times, dtype=torch.bool), self.memory_valid)
-        self._memory_scenes = [meta['scene_token'] for meta in img_metas]
-        self._memory_samples = [meta['sample_idx'] for meta in img_metas]
-
     def _predict_world(self, res_latent_query_all, current_scene, selection,
                        bev_navi_embed, init_wp_vector, action_query,
-                       img_metas):
+                       img_metas, memory):
         residual, position = torch.split(res_latent_query_all[0], self.embed_dims, dim=-1)
         world_query = self.action_mln(residual.permute(1, 0, 2), init_wp_vector)
         if self.memory_frames:
-            times, poses = self._memory_metadata(img_metas, residual)
-            history_points, ages = self.pre_update_memory(img_metas, residual, times, poses)
+            history_points, ages = self.align_memory(memory, img_metas, residual)
             points = self._reference_points(selection)
             retrieved = self.read_memory(current_scene, residual, action_query,
-                                         points, history_points, ages)
+                                         points, history_points, ages, memory)
             world_query = world_query + retrieved.permute(1, 0, 2)
         world_query = self.res_latent_decoder(
             query=world_query, key=world_query, value=world_query,
             query_pos=position.permute(1, 0, 2), key_pos=position.permute(1, 0, 2))
         pred_bev = self.tokenfuser(world_query.permute(1, 0, 2), bev_navi_embed) + bev_navi_embed
-        if self.memory_frames:
-            self.post_update_memory(img_metas, current_scene, residual, points, times, poses)
         return pred_bev

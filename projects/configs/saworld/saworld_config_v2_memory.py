@@ -67,12 +67,14 @@ bev_h_ = 100
 bev_w_ = 100
 queue_length = 0 # each sequence contains `queue_length` frames.
 total_epochs = 12
+memory_frames = 4
+memory_max_gap = 1.0
 
 multi_adj_frame_id_cfg = (1, 1+2, 1)
 numC_Trans=80
 
 model = dict(
-    type='SAWorld',
+    type='SAWorldV2',
     align_after_view_transfromation=False,
     num_adj=len(range(*multi_adj_frame_id_cfg)),
     img_backbone=dict(
@@ -118,7 +120,7 @@ model = dict(
         stride=[1,],
         backbone_output_ids=[0,]),
     pts_bbox_head=dict(
-        type='SAWorldHeadV2',
+        type='SAWorldHeadV2Sample',
         embed_dims=_dim_,
         num_frames=len(range(*multi_adj_frame_id_cfg))+1,
         grid_config=grid_config,
@@ -126,9 +128,9 @@ model = dict(
         ego_lcf_feat_idx=None,
         valid_fut_ts=6,
         use_action=True,
-        memory_frames=4,  # K past frames, 16 sparse scene/residual tokens each.
+        memory_frames=memory_frames,  # K past observations built independently per anchor.
         memory_heads=8,
-        memory_max_gap=1.0,  # Seconds; discontinuities refresh the slot.
+        memory_max_gap=memory_max_gap,  # Maximum adjacent observation gap, in seconds.
         action_traj_dt=0.5,  # Future trajectory labels are sampled every 0.5 seconds.
         action_flow_loss_weight=0.1,
         latent_decoder=dict(
@@ -210,8 +212,8 @@ model = dict(
             pts_cost=dict(type='OrderedPtsL1Cost', weight=1.0),
             pc_range=point_cloud_range))))
 
-# Memory needs pose/time in the same key-camera ego frame used by RCSample.
-# Keep the usual metadata, adding just the two streaming-memory fields.
+# Per-sample memory needs pose/time in the key-camera ego frame used by RCSample.
+# The current-frame pipeline remains the SAWorld pipeline plus pose/time metadata.
 memory_meta_keys = (
     'filename', 'ori_shape', 'img_shape', 'lidar2img', 'depth2img', 'cam2img',
     'pad_shape', 'scale_factor', 'flip', 'pcd_horizontal_flip', 'pcd_vertical_flip',
@@ -220,7 +222,7 @@ memory_meta_keys = (
     'transformation_3d_flow', 'scene_token', 'can_bus',
     'memory_timestamp', 'memory_ego2global')
 
-dataset_type = 'ResWorldCustomNuScenesDataset'
+dataset_type = 'SAWorldMemoryNuScenesDataset'
 data_root = 'data/nuscenes/'
 file_client_args = dict(backend='disk')
 
@@ -273,6 +275,8 @@ data = dict(
     persistent_workers=True,
     train=dict(
         type=dataset_type,
+        memory_frames=memory_frames,
+        memory_max_gap=memory_max_gap,
         data_root=data_root,
         multi_adj_frame_id_cfg=multi_adj_frame_id_cfg,
         ann_file=data_root + 'vad_nuscenes_infos_temporal_train.pkl',
@@ -280,9 +284,8 @@ data = dict(
         classes=class_names,
         modality=input_modality,
         test_mode=False,
-        # Planning labels remain usable without boxes/maps. Random replacement
-        # of empty-detection samples would break each slot's temporal order.
-        filter_empty_gt=False,
+        # Match SAWorld anchor filtering; history itself is never GT-filtered.
+        filter_empty_gt=True,
         use_valid_flag=True,
         bev_size=(bev_h_, bev_w_),
         pc_range=point_cloud_range,
@@ -292,6 +295,8 @@ data = dict(
         box_type_3d='LiDAR',
         custom_eval_version='vad_nusc_detection_cvpr_2019'),
     val=dict(type=dataset_type,
+             memory_frames=memory_frames,
+             memory_max_gap=memory_max_gap,
              data_root=data_root,
              multi_adj_frame_id_cfg=multi_adj_frame_id_cfg,
              pc_range=point_cloud_range,
@@ -305,6 +310,8 @@ data = dict(
              use_pkl_result=True,
              custom_eval_version='vad_nusc_detection_cvpr_2019'),
     test=dict(type=dataset_type,
+              memory_frames=memory_frames,
+              memory_max_gap=memory_max_gap,
               data_root=data_root,
               multi_adj_frame_id_cfg=multi_adj_frame_id_cfg,
               pc_range=point_cloud_range,
@@ -317,7 +324,7 @@ data = dict(
               map_eval_use_same_gt_sample_num_flag=map_eval_use_same_gt_sample_num_flag,
               use_pkl_result=True,
               custom_eval_version='vad_nusc_detection_cvpr_2019'),
-    shuffler_sampler=dict(type='SAWorldSceneSampler'),
+    shuffler_sampler=dict(type='DistributedGroupSampler'),
     nonshuffler_sampler=dict(type='DistributedSampler')
 )
 
@@ -360,4 +367,4 @@ custom_hooks = [
     ),
 ]
 load_from = 'ckpts/geobev-r50-nuimage-cbgs.pth'
-work_dir = './work_dirs/saworld_v2_memory'
+work_dir = './work_dirs/saworld_v2_sample_memory'
