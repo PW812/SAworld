@@ -1,0 +1,374 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="saworld-v3" name="SAWorld V3">
+    <mxGraphModel dx="1780" dy="1240" grid="1" gridSize="10" page="1" pageScale="1" pageWidth="1780" pageHeight="1240" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="past-input" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EDF5FB;strokeColor=#0072B2;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="180" width="220" height="120" />
+        </mxCell>
+        <mxCell id="memory" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EAF6F1;strokeColor=#008469;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="300" y="180" width="260" height="120" />
+        </mxCell>
+        <mxCell id="current-input" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EDF5FB;strokeColor=#0072B2;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="390" width="220" height="120" />
+        </mxCell>
+        <mxCell id="current-features" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EDF5FB;strokeColor=#0072B2;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="300" y="390" width="260" height="120" />
+        </mxCell>
+        <mxCell id="history-state" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EAF6F1;strokeColor=#008469;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="620" y="270" width="280" height="170" />
+        </mxCell>
+        <mxCell id="scene-port" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EDF5FB;strokeColor=#0072B2;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="990" y="125" width="260" height="36" />
+        </mxCell>
+        <mxCell id="fusion" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#F3EFF9;strokeColor=#7858A6;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="990" y="190" width="260" height="100" />
+        </mxCell>
+        <mxCell id="ego-port" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EDF5FB;strokeColor=#0072B2;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1330" y="125" width="280" height="36" />
+        </mxCell>
+        <mxCell id="action" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#F3EFF9;strokeColor=#7858A6;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1330" y="190" width="280" height="100" />
+        </mxCell>
+        <mxCell id="prior" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#F3EFF9;strokeColor=#7858A6;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1330" y="370" width="280" height="100" />
+        </mxCell>
+        <mxCell id="residual-port" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EDF5FB;strokeColor=#0072B2;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="990" y="505" width="260" height="36" />
+        </mxCell>
+        <mxCell id="rollout" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#FFF3E5;strokeColor=#BC5B11;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="990" y="580" width="260" height="120" />
+        </mxCell>
+        <mxCell id="world-decode" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#FFF3E5;strokeColor=#BC5B11;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1330" y="580" width="280" height="120" />
+        </mxCell>
+        <mxCell id="bev-port" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EDF5FB;strokeColor=#0072B2;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1330" y="728" width="280" height="36" />
+        </mxCell>
+        <mxCell id="refine" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#FFF3E5;strokeColor=#BC5B11;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1330" y="810" width="280" height="110" />
+        </mxCell>
+        <mxCell id="final" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#F3EFF9;strokeColor=#7858A6;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1330" y="985" width="280" height="78" />
+        </mxCell>
+        <mxCell id="dynamics-detail" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#F6F8FA;strokeColor=#B9C6D0;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="755" width="1210" height="350" />
+        </mxCell>
+        <mxCell id="history-detail" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#EAF6F1;strokeColor=#008469;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="66" y="944" width="555" height="123" />
+        </mxCell>
+        <mxCell id="future-detail" value="" style="rounded=1;whiteSpace=wrap;html=0;arcSize=12;fillColor=#FFF3E5;strokeColor=#BC5B11;strokeWidth=1.6;dashed=0;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="649" y="944" width="575" height="123" />
+        </mxCell>
+        <mxCell id="past-to-memory" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#008469;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="260" y="240" />
+            <mxPoint as="targetPoint" x="300" y="240" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="current-to-features" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#0072B2;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="260" y="450" />
+            <mxPoint as="targetPoint" x="300" y="450" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="memory-to-state" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#008469;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="560" y="240" />
+            <mxPoint as="targetPoint" x="620" y="315" />
+            <Array as="points">
+              <mxPoint x="590" y="240" />
+              <mxPoint x="590" y="315" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="current-to-state" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#0072B2;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="560" y="450" />
+            <mxPoint as="targetPoint" x="620" y="405" />
+            <Array as="points">
+              <mxPoint x="590" y="450" />
+              <mxPoint x="590" y="405" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="state-to-fusion" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#008469;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="900" y="315" />
+            <mxPoint as="targetPoint" x="990" y="240" />
+            <Array as="points">
+              <mxPoint x="945" y="315" />
+              <mxPoint x="945" y="240" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="scene-to-fusion" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#0072B2;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1120" y="161" />
+            <mxPoint as="targetPoint" x="1120" y="190" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ego-to-action" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#0072B2;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1470" y="161" />
+            <mxPoint as="targetPoint" x="1470" y="190" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="fusion-to-action" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#7858A6;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1250" y="240" />
+            <mxPoint as="targetPoint" x="1330" y="240" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="action-to-prior" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#7858A6;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1470" y="290" />
+            <mxPoint as="targetPoint" x="1470" y="370" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="scene-to-prior" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#7858A6;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1120" y="290" />
+            <mxPoint as="targetPoint" x="1330" y="420" />
+            <Array as="points">
+              <mxPoint x="1120" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="state-to-rollout" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#008469;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="760" y="440" />
+            <mxPoint as="targetPoint" x="990" y="640" />
+            <Array as="points">
+              <mxPoint x="760" y="640" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="residual-to-rollout" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#0072B2;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1120" y="541" />
+            <mxPoint as="targetPoint" x="1120" y="580" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="rollout-to-world" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#BC5B11;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1250" y="640" />
+            <mxPoint as="targetPoint" x="1330" y="640" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="prior-to-world" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#7858A6;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1470" y="470" />
+            <mxPoint as="targetPoint" x="1470" y="580" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="bev-to-world" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#0072B2;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1470" y="728" />
+            <mxPoint as="targetPoint" x="1470" y="700" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="world-to-refine" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#BC5B11;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1610" y="660" />
+            <mxPoint as="targetPoint" x="1470" y="810" />
+            <Array as="points">
+              <mxPoint x="1640" y="660" />
+              <mxPoint x="1640" y="787" />
+              <mxPoint x="1470" y="787" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="prior-to-refine" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#7858A6;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1610" y="420" />
+            <mxPoint as="targetPoint" x="1610" y="865" />
+            <Array as="points">
+              <mxPoint x="1710" y="420" />
+              <mxPoint x="1710" y="865" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="refine-to-final" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#BC5B11;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="1470" y="920" />
+            <mxPoint as="targetPoint" x="1470" y="985" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="detail-predict-to-update" value="" style="edgeStyle=none;rounded=0;html=0;endArrow=block;endFill=1;strokeColor=#BC5B11;strokeWidth=1.8;dashed=0;" edge="1" parent="1">
+          <mxGeometry as="geometry" relative="1">
+            <mxPoint as="sourcePoint" x="650" y="884" />
+            <mxPoint as="targetPoint" x="714" y="884" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="text-0" value="SAWorld v3  |  历史驱动的决策与残差动力学" style="text;html=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=34;fontColor=#203044;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="15.799999999999997" width="1680" height="54.400000000000006" />
+        </mxCell>
+        <mxCell id="text-1" value="按当前代码绘制：一个动态状态连接历史观测、当前规划与未来世界" style="text;html=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=20;fontColor=#536273;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="67.0" width="1680" height="32.0" />
+        </mxCell>
+        <mxCell id="text-2" value="(a) 整体架构" style="text;html=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#203044;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="116.6" width="500" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-3" value="过去 K 帧观测" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#0072B2;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="48.0" y="191.6" width="204" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-4" value="同场景历史窗口&#10;按最早 → 最近排序" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="48.0" y="227.4" width="204" height="59.2" />
+        </mxCell>
+        <mxCell id="text-5" value="共享编码 → Memory" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#008469;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="308.0" y="191.6" width="244" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-6" value="场景 / 残差 / 坐标 / 时间&#10;eval · no_grad · detached" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="308.0" y="227.4" width="244" height="59.2" />
+        </mxCell>
+        <mxCell id="text-7" value="当前观测窗口" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#0072B2;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="48.0" y="401.6" width="204" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-8" value="当前帧 + 相邻历史&#10;图像 · CAN · 导航" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="48.0" y="437.4" width="204" height="59.2" />
+        </mxCell>
+        <mxCell id="text-9" value="共享编码 → 当前特征" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#0072B2;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="308.0" y="401.6" width="244" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-10" value="BEV + 单个 TokenLearner&#10;S_t · r_t · B_obs" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="308.0" y="437.4" width="244" height="59.2" />
+        </mxCell>
+        <mxCell id="text-11" value="两路编码器权重共享" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#536273;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="270.0" y="330.2" width="320" height="29.6" />
+        </mxCell>
+        <mxCell id="text-12" value="历史动态状态" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#008469;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="628.0" y="281.6" width="264" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-13" value="以当前场景 / 参考点查询&#10;逐帧对应 → GRU 顺序更新&#10;最后吸收 r_t，输出 h_t" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="628.0" y="327.6" width="264" height="88.80000000000001" />
+        </mxCell>
+        <mxCell id="text-14" value="① 记忆先参与决策" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#008469;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="565.0" y="212.6" width="390" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-15" value="当前场景 S_t" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0072B2;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="997.5" y="128.6" width="245" height="28.8" />
+        </mxCell>
+        <mxCell id="text-16" value="动态场景融合" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#7858A6;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="998.0" y="201.6" width="244" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-17" value="[S_t, h_t] → Linear / LN&#10;→ 场景 decoder" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="998.0" y="227.4" width="244" height="59.2" />
+        </mxCell>
+        <mxCell id="text-18" value="ego status + 导航指令" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0072B2;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1340.0" y="128.6" width="260" height="28.8" />
+        </mxCell>
+        <mxCell id="text-19" value="ActionDiT" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#7858A6;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="201.6" width="264" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-20" value="生成 action query  A_t" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="242.2" width="264" height="29.6" />
+        </mxCell>
+        <mxCell id="text-21" value="先验规划器" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#7858A6;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="381.6" width="264" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-22" value="场景 + action 联合读取&#10;waypoint query / 先验 P⁰" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="407.4" width="264" height="59.2" />
+        </mxCell>
+        <mxCell id="text-23" value="当前残差 r_t" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0072B2;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="997.5" y="508.6" width="245" height="28.8" />
+        </mxCell>
+        <mxCell id="text-24" value="未来状态递推" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#BC5B11;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="998.0" y="591.6" width="244" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-25" value="复用 GRU 与变化率读出&#10;h_(t+0.5), …, h_(t+3)" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="998.0" y="627.4" width="244" height="59.2" />
+        </mxCell>
+        <mxCell id="text-26" value="② 残差动态演化" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#BC5B11;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="945.0" y="446.6" width="350" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-27" value="逐时刻世界解码" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#BC5B11;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="591.6" width="264" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-28" value="先验条件化 MLN → decoder&#10;TokenFuser + B_obs" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="627.4" width="264" height="59.2" />
+        </mxCell>
+        <mxCell id="text-29" value="当前观测 BEV：B_obs" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#0072B2;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1337.5" y="731.6" width="265" height="28.8" />
+        </mxCell>
+        <mxCell id="text-30" value="可变形注意力细化" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#BC5B11;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="821.6" width="264" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-31" value="waypoint τ 读取 BEV τ&#10;以先验轨迹坐标为参考点" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="852.4" width="264" height="59.2" />
+        </mxCell>
+        <mxCell id="text-32" value="最终规划轨迹" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=21;fontColor=#7858A6;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="998.2" width="264" height="33.6" />
+        </mxCell>
+        <mxCell id="text-33" value="共享轨迹 decoder" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1338.0" y="1026.2" width="264" height="29.6" />
+        </mxCell>
+        <mxCell id="text-34" value="h_t" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=17.5;fontColor=#008469;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="763.0" y="325.0" width="360" height="28.0" />
+        </mxCell>
+        <mxCell id="text-35" value="A_t" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=17.5;fontColor=#7858A6;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1328.0" y="314.0" width="360" height="28.0" />
+        </mxCell>
+        <mxCell id="text-36" value="场景 token" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=17.5;fontColor=#7858A6;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1040.0" y="387.0" width="360" height="28.0" />
+        </mxCell>
+        <mxCell id="text-37" value="h_t" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=17.5;fontColor=#008469;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="686.0" y="605.0" width="360" height="28.0" />
+        </mxCell>
+        <mxCell id="text-38" value="P⁰ 条件化" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=17.5;fontColor=#7858A6;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1358.0" y="513.0" width="360" height="28.0" />
+        </mxCell>
+        <mxCell id="text-39" value="6 个未来 BEV" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=17.5;fontColor=#BC5B11;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1285.0" y="761.0" width="360" height="28.0" />
+        </mxCell>
+        <mxCell id="text-40" value="先验坐标&#10;+ query" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#7858A6;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="1587.0" y="505.2" width="160" height="57.6" />
+        </mxCell>
+        <mxCell id="text-41" value="(b) 同一动力学单元：历史拟合与未来递推共享参数" style="text;html=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#203044;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="66" y="770.6" width="1150" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-42" value="下一残差预测" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#BC5B11;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="75.0" y="830.8" width="540" height="30.400000000000002" />
+        </mxCell>
+        <mxCell id="text-43" value="r̂_(i+1) = r_i + Δt_(i+1) · W h_i" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="70.0" y="869.6" width="550" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-44" value="共享状态更新" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#008469;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="720.0" y="830.8" width="500" height="30.400000000000002" />
+        </mxCell>
+        <mxCell id="text-45" value="h_(i+1) = GRU([r_in, Δt], h_i)" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=23;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="710.0" y="869.6" width="520" height="36.800000000000004" />
+        </mxCell>
+        <mxCell id="text-46" value="历史阶段：r_in = 实际观测残差" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=21;fontColor=#008469;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="75.5" y="953.2" width="535" height="33.6" />
+        </mxCell>
+        <mxCell id="text-47" value="预测后用真实观测更新状态" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="78.0" y="986.6" width="530" height="28.8" />
+        </mxCell>
+        <mxCell id="text-48" value="L_dyn = L1(r̂_(i+1), stopgrad(r_(i+1)))" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#B14C55;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="75.5" y="1017.8" width="535" height="30.400000000000002" />
+        </mxCell>
+        <mxCell id="text-49" value="未来阶段：r_in = 预测残差" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=21;fontColor=#BC5B11;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="658.5" y="953.2" width="555" height="33.6" />
+        </mxCell>
+        <mxCell id="text-50" value="预测值反馈，连续递推 6 步" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="658.5" y="989.8" width="555" height="30.400000000000002" />
+        </mxCell>
+        <mxCell id="text-51" value="Δt = 0.5 s；所有未来时刻共享参数" style="text;html=0;whiteSpace=wrap;overflow=visible;align=center;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18;fontColor=#203044;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="658.5" y="1022.6" width="555" height="28.8" />
+        </mxCell>
+        <mxCell id="text-52" value="训练监督" style="text;html=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=21;fontColor=#B14C55;fontStyle=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1125.2" width="180" height="33.6" />
+        </mxCell>
+        <mxCell id="text-53" value="L_depth：深度预测    L_prior：先验轨迹    L_flow：ActionDiT    L_plan：最终轨迹    L_dyn：历史转移" style="text;html=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=19;fontColor=#B14C55;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="210" y="1126.8" width="1500" height="30.400000000000002" />
+        </mxCell>
+        <mxCell id="text-54" value="注：动作通过先验轨迹条件化未来世界解码；rollout 由历史状态驱动。S_t、r_t、B_obs 的同名端口复用当前编码结果。" style="text;html=0;whiteSpace=wrap;overflow=visible;align=left;verticalAlign=middle;fontFamily=Noto Sans CJK SC;fontSize=18.5;fontColor=#536273;fontStyle=0;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry as="geometry" x="40" y="1177.2" width="1700" height="29.6" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

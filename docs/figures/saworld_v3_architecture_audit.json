@@ -1,0 +1,25 @@
+{
+  "canvas": [
+    1780,
+    1240
+  ],
+  "shape_count": 19,
+  "edge_count": 19,
+  "text_count": 55,
+  "text_outside_canvas": [],
+  "missing_glyphs": [],
+  "renderer": "Matplotlib Agg; vector SVG; native draw.io XML",
+  "sources": [
+    "SAWorld/projects/mmdet3d_plugin/saworld/saworld_head_v3.py",
+    "SAWorld/projects/mmdet3d_plugin/saworld/saworld_v2.py"
+  ],
+  "semantic_checks": {
+    "history_encoding_detached": true,
+    "history_enters_before_action_and_prior": true,
+    "shared_observe_and_predict_parameters": true,
+    "action_conditions_world_decode_not_rollout": true,
+    "waypoint_reads_matching_future_time": true,
+    "dynamics_loss_targets_observed_history_only": true
+  },
+  "display_note": "Designed for screen review at native size; SVG uses portable vector outlines; draw.io preserves editable text."
+}
