@@ -1,12 +1,15 @@
 """CPU checks for independently rebuilt, detached SAWorld history memory."""
 import copy
+import tempfile
 import types
 import unittest
+from collections import OrderedDict
 from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import torch
+from PIL import Image
 from mmcv import Config
 from mmcv.parallel import collate
 from mmcv.runner import BaseModule
@@ -14,8 +17,10 @@ from mmdet.models import build_head
 
 import projects.mmdet3d_plugin  # register project components
 from projects.mmdet3d_plugin.saworld.saworld_v2 import SAWorldV2
-from projects.mmdet3d_plugin.datasets.nuscenes_saworld_memory_dataset import SAWorldMemoryNuScenesDataset
+from projects.mmdet3d_plugin.datasets.nuscenes_saworld_memory_dataset import (
+    SAWorldMemoryNuScenesDataset, _CachedPrepareImageInputs)
 from projects.mmdet3d_plugin.datasets.nuscenes_resworld_dataset import ResWorldCustomNuScenesDataset
+from projects.mmdet3d_plugin.datasets.pipelines.loading import PrepareImageInputs
 from projects.mmdet3d_plugin.datasets.pipelines.memory import SAWorldMemoryMetadata
 
 CONFIG = Path(__file__).resolve().parents[1] / 'projects/configs/saworld/saworld_config_v2_memory.py'
@@ -34,6 +39,83 @@ def metadata(frame, scene='a', pose=None):
                 prev_idx=f'{scene}-{frame-1}' if frame else '',
                 memory_timestamp=1_500_000_000.0 + frame * .5,
                 memory_ego2global=np.eye(4) if pose is None else pose)
+
+
+class ImageTransformCacheTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.paths = [Path(directory.name) / f'{index}.jpg' for index in range(3)]
+        pixels = np.arange(12 * 16 * 3, dtype=np.uint8).reshape(12, 16, 3)
+        for path in self.paths:
+            Image.fromarray(pixels).save(path)
+        self.cache = OrderedDict()
+        self.loader = _CachedPrepareImageInputs(self.cache, 2, data_config={})
+
+    def transform(self, loader, path, resize_dims=(12, 9), crop=(1, 1, 10, 8),
+                  flip=False, rotate=0):
+        with Image.open(path) as image:
+            return loader.img_transform_core(image, resize_dims, crop, flip, rotate)
+
+    def test_cached_pixels_match_each_augmentation(self):
+        baseline = PrepareImageInputs(data_config={})
+        for options in ({}, dict(flip=True), dict(rotate=7),
+                        dict(resize_dims=(15, 11), crop=(2, 1, 10, 8))):
+            expected = self.transform(baseline, self.paths[0], **options)
+            for _ in range(2):
+                actual = self.transform(self.loader, self.paths[0], **options)
+                np.testing.assert_array_equal(np.asarray(actual), np.asarray(expected))
+
+    def test_current_and_history_share_transforms_without_mutation(self):
+        history = _CachedPrepareImageInputs(self.cache, 2, data_config={})
+        original = PrepareImageInputs.img_transform_core
+        with patch.object(PrepareImageInputs, 'img_transform_core', autospec=True,
+                          side_effect=original) as transform:
+            image = self.transform(self.loader, self.paths[0])
+            expected = np.asarray(image).copy()
+            image.putpixel((0, 0), (255, 255, 255))
+            actual = self.transform(history, self.paths[0])
+            np.testing.assert_array_equal(np.asarray(actual), expected)
+            self.assertEqual(transform.call_count, 1)
+
+    def test_cache_evicts_least_recently_used_image(self):
+        original = PrepareImageInputs.img_transform_core
+        with patch.object(PrepareImageInputs, 'img_transform_core', autospec=True,
+                          side_effect=original) as transform:
+            for index in (0, 1, 0, 2, 0, 1):
+                self.transform(self.loader, self.paths[index])
+                self.assertLessEqual(len(self.cache), 2)
+            self.assertEqual(transform.call_count, 4)
+
+    def test_training_transform_bypasses_cache(self):
+        self.loader.is_train = True
+        original = PrepareImageInputs.img_transform_core
+        with patch.object(PrepareImageInputs, 'img_transform_core', autospec=True,
+                          side_effect=original) as transform:
+            for _ in range(2):
+                self.transform(self.loader, self.paths[0])
+            self.assertEqual(transform.call_count, 2)
+            self.assertFalse(self.cache)
+
+    def test_dataset_enables_shared_cache_only_for_evaluation(self):
+        from mmdet.datasets.pipelines import Compose
+
+        def initialize(dataset, pipeline, test_mode):
+            dataset.test_mode = test_mode
+            dataset.pipeline = Compose(pipeline)
+            dataset.data_infos = []
+
+        with patch.object(ResWorldCustomNuScenesDataset, '__init__', initialize):
+            for test_mode, size in ((False, 128), (True, 128), (True, 0)):
+                dataset = SAWorldMemoryNuScenesDataset(
+                    pipeline=[dict(type='PrepareImageInputs', data_config={},
+                                   is_train=not test_mode)],
+                    test_mode=test_mode, test_image_cache_size=size)
+                expected = _CachedPrepareImageInputs if test_mode and size else PrepareImageInputs
+                self.assertIs(type(dataset.history_images), expected)
+                self.assertIs(type(dataset.pipeline.transforms[0]), expected)
+                if test_mode and size:
+                    self.assertIs(dataset.history_images.cache, dataset.pipeline.transforms[0].cache)
 
 
 class MemoryTests(unittest.TestCase):
@@ -207,6 +289,46 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(len(actual), 2)
         self.assertIsNone(actual[0][0])
         self.assertEqual(actual[1][3]['img_metas']['sample_idx'], 'b-3')
+
+    def test_distributed_test_unwraps_cpu_only_history(self):
+        import tempfile
+        import torch.distributed as dist
+        from functools import partial
+        from mmcv.parallel import DataContainer as DC, MMDistributedDataParallel
+        from projects.mmdet3d_plugin.saworld.apis import test as test_api
+
+        clips = [[None, None, None, self.history_entry(0)],
+                 [self.history_entry(i, 'b') for i in range(4)]]
+        metas = [metadata(1), metadata(4, 'b')]
+        samples = [dict(history_memory=DC(clip, cpu_only=True),
+                        img_metas=[DC(meta, cpu_only=True)],
+                        ego_fut_cmd=[DC(torch.ones(1, 1, 3), stack=True)])
+                   for clip, meta in zip(clips, metas)]
+        loader = torch.utils.data.DataLoader(
+            samples, batch_size=2, collate_fn=partial(collate, samples_per_gpu=2))
+        model = self.fake_detector()
+
+        def forward(instance, return_loss, rescale, history_memory, img_metas, ego_fut_cmd):
+            self.assertFalse(return_loss)
+            self.assertTrue(rescale)
+            self.assertIsInstance(history_memory, list)
+            self.assertEqual(img_metas[0], metas)
+            self.assertEqual(ego_fut_cmd[0].shape, (2, 1, 1, 3))
+            self.assertIs(history_memory[0][3], clips[0][3])
+            self.assertEqual(history_memory[0][3]['img_inputs'][0].device.type, 'cpu')
+            memory = instance.build_history_memory(history_memory, img_metas[0], ego_fut_cmd[0])
+            return memory['valid'].sum(1).tolist()
+
+        model.forward = types.MethodType(forward, model)
+        with tempfile.TemporaryDirectory() as directory:
+            dist.init_process_group('gloo', init_method=f'file://{directory}/init', rank=0, world_size=1)
+            try:
+                wrapped = MMDistributedDataParallel(model, broadcast_buffers=False)
+                with patch.object(test_api.time, 'sleep'), patch.object(
+                        test_api, 'collect_results_cpu', side_effect=lambda results, size, tmpdir: results):
+                    self.assertEqual(test_api.custom_multi_gpu_test(wrapped, loader), [1, 4])
+            finally:
+                dist.destroy_process_group()
 
     def test_config_matches_random_anchor_training(self):
         cfg = Config.fromfile(str(CONFIG))

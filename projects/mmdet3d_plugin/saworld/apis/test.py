@@ -109,10 +109,6 @@ def custom_multi_gpu_old(model, data_loader, tmpdir=None, gpu_collect=False):
 
 
 def custom_multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
-    # MMCV 1.7.1 accesses this internal DDP flag, which was removed in
-    # PyTorch 2.6.  The replicated-tensor path is not needed for testing.
-    if not hasattr(model, '_use_replicated_tensor_module'):
-        model._use_replicated_tensor_module = False
     model.eval()
     results = []
     dataset = data_loader.dataset
@@ -123,7 +119,10 @@ def custom_multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
     have_mask = False
     for i, data in enumerate(data_loader):
         with torch.no_grad():
-            result = model(return_loss=False, rescale=True, **data)
+            # PyTorch 2.x DDP.forward bypasses MMCV's DataContainer scatter.
+            # Keep cpu_only history on CPU and scatter the current-frame inputs.
+            _, batch_kwargs = model.scatter((), data, model.device_ids or [-1])
+            result = model.module(return_loss=False, rescale=True, **batch_kwargs[0])
 
         results.extend(result)
         batch_size = len(result)

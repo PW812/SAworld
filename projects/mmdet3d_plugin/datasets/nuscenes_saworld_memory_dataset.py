@@ -1,5 +1,6 @@
 """Random current-frame sampling with an independent, causal history clip."""
 import copy
+from collections import OrderedDict
 
 import numpy as np
 import torch
@@ -12,6 +13,29 @@ from .pipelines.loading import PrepareImageInputs
 from .pipelines.memory import SAWorldMemoryMetadata
 
 
+class _CachedPrepareImageInputs(PrepareImageInputs):
+    """Reuse evaluation image transforms within a worker's bounded cache."""
+
+    def __init__(self, cache, cache_size, **kwargs):
+        super().__init__(**kwargs)
+        self.cache = cache
+        self.cache_size = cache_size
+
+    def img_transform_core(self, img, resize_dims, crop, flip, rotate):
+        filename = getattr(img, 'filename', None)
+        if self.is_train or not filename:
+            return super().img_transform_core(img, resize_dims, crop, flip, rotate)
+        key = (filename, tuple(resize_dims), tuple(crop), bool(flip), float(rotate))
+        if key in self.cache:
+            self.cache.move_to_end(key)
+            return self.cache[key].copy()
+        transformed = super().img_transform_core(img, resize_dims, crop, flip, rotate)
+        self.cache[key] = transformed.copy()
+        if len(self.cache) > self.cache_size:
+            self.cache.popitem(last=False)
+        return transformed
+
+
 @DATASETS.register_module()
 class SAWorldMemoryNuScenesDataset(ResWorldCustomNuScenesDataset):
     """Filter/resample the anchor exactly as SAWorld, then attach past frames.
@@ -21,19 +45,30 @@ class SAWorldMemoryNuScenesDataset(ResWorldCustomNuScenesDataset):
     maps, future trajectories, or historical future-derived navigation commands.
     """
 
-    def __init__(self, memory_frames=4, memory_max_gap=1.0, **kwargs):
+    def __init__(self, memory_frames=4, memory_max_gap=1.0,
+                 test_image_cache_size=128, **kwargs):
         if not isinstance(memory_frames, int) or memory_frames < 0:
             raise ValueError('memory_frames must be a nonnegative integer')
+        if not isinstance(test_image_cache_size, int) or test_image_cache_size < 0:
+            raise ValueError('test_image_cache_size must be a nonnegative integer')
         self.memory_frames = memory_frames
         self.memory_max_gap = memory_max_gap
         image_config = next(copy.deepcopy(stage) for stage in kwargs['pipeline']
                             if stage['type'] == 'PrepareImageInputs')
         image_config.pop('type')
-        image_config['load_point_label'] = False
-        self.history_images = PrepareImageInputs(**image_config)
+        history_config = dict(image_config, load_point_label=False)
+        self.history_images = PrepareImageInputs(**history_config)
         self.history_metadata = SAWorldMemoryMetadata()
         super().__init__(**kwargs)
         self._token_to_index = {info['token']: index for index, info in enumerate(self.data_infos)}
+        if self.test_mode and test_image_cache_size:
+            cache = OrderedDict()
+            image_stage = next(index for index, stage in enumerate(self.pipeline.transforms)
+                               if type(stage) is PrepareImageInputs)
+            self.pipeline.transforms[image_stage] = _CachedPrepareImageInputs(
+                cache, test_image_cache_size, **image_config)
+            self.history_images = _CachedPrepareImageInputs(
+                cache, test_image_cache_size, **history_config)
 
     def _history_indices(self, index):
         current = self.data_infos[index]
