@@ -269,7 +269,12 @@ class PrepareImageInputs(object):
             results['gt_depth'] = gt_depth
             results['gt_semantic'] = gt_semantic
 
-        # collect can_bus of each sample
+        results['can_bus'] = self.get_can_bus(results)
+        # results['img'] = imgs
+        bda = torch.eye(3)
+        return (imgs, sensor2egos, ego2globals, intrins, post_rots, post_trans, bda)
+
+    def get_can_bus(self, results):
         can_bus = [torch.tensor(results['curr']['can_bus']).float()]
         if self.sequential:
             for adj_info in results['adjacent']:
@@ -279,10 +284,7 @@ class PrepareImageInputs(object):
         can_bus[:-1, -1] -= can_bus[1:, -1]
         can_bus[-1, :3] = 0
         can_bus[-1, -1] = 0
-        results['can_bus'] = can_bus
-        # results['img'] = imgs
-        bda = torch.eye(3)
-        return (imgs, sensor2egos, ego2globals, intrins, post_rots, post_trans, bda)
+        return can_bus
 
     def __call__(self, results):
         results['img_inputs'] = self.get_inputs(results)

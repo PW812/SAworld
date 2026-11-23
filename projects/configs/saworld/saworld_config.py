@@ -343,3 +343,24 @@ custom_hooks = [
 ]
 load_from = 'ckpts/geobev-r50-nuimage-cbgs.pth'
 work_dir = './work_dirs/resworld_config'
+
+# -------------- Planning --------------
+# plan_L2_1s:0.14736073748126485
+# plan_L2_2s:0.28590208328856426
+# plan_L2_3s:0.5167174622882692
+# plan_obj_col_1s:0.0
+# plan_obj_col_2s:0.0
+# plan_obj_col_3s:6.511688674886516e-05
+# plan_obj_box_col_1s:9.767532721234616e-05
+# plan_obj_box_col_2s:0.0005372142996679039
+# plan_obj_box_col_3s:0.001855831260698851
+# fut_valid_flag:1.0
+# plan_L2_stp3_1s:0.19281596395899672
+# plan_obj_col_stp3_1s:0.0
+# plan_obj_box_col_stp3_1s:0.0001953506544246923
+# plan_L2_stp3_2s:0.5234981491434145
+# plan_obj_col_stp3_2s:0.0
+# plan_obj_box_col_stp3_2s:0.0013674545809728462
+# plan_L2_stp3_3s:1.158297942880903
+# plan_obj_col_stp3_3s:0.0001953506544246923
+# plan_obj_box_col_stp3_3s:0.006055870287165462

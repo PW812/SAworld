@@ -73,7 +73,12 @@ class TokenFuser(nn.Module):
         self.mlp = MlpBlock(input_dim=in_channels, mlp_dim=bottleneck_dim, output_dim=bottleneck_dim, dropout_rate=dropout_rate)
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, inputs, original):
+    def spatial_mix(self, original):
+        """Compute the spatial weights for a flattened [B, HW, C] BEV."""
+        normalized = self.norm(original.permute(0, 2, 1)).permute(0, 2, 1)
+        return self.mlp(normalized).sigmoid()
+
+    def forward(self, inputs, original, mix=None):
         """Applies token fusion to the generate 2D ouputs.
 
         Args:
@@ -98,9 +103,8 @@ class TokenFuser(nn.Module):
         if self.use_normalization:
             inputs = self.norm2(inputs)
 
-        original = self.norm(original.permute(0,2,1)).permute(0,2,1)
-        # mix [B, HW, D]
-        mix = self.mlp(original).sigmoid()
+        if mix is None:
+            mix = self.spatial_mix(original)
     
         # Using matrix multiplication for fusing tokens back
         fused = torch.einsum('bcs,bhs->bhc', inputs, mix)

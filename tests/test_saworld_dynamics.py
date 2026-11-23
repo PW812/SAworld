@@ -12,7 +12,9 @@ from mmcv.runner import BaseModule
 from mmdet.models import build_head
 
 import projects.mmdet3d_plugin
+from projects.mmdet3d_plugin.datasets.nuscenes_saworld_memory_dataset import DeferredTestHistory
 from projects.mmdet3d_plugin.saworld.saworld_head_v3 import ResidualDynamics
+from projects.mmdet3d_plugin.saworld.saworld_v2 import SAWorldV2
 
 
 CONFIG = Path(__file__).resolve().parents[1] / 'projects/configs/saworld/saworld_config_v3_dynamics.py'
@@ -132,6 +134,79 @@ class DynamicsTests(unittest.TestCase):
         self.assertEqual(output['future_residuals'].shape, (2, 6, 16, 256))
         self.assertTrue(torch.isfinite(output['ego_fut_preds']).all())
 
+    def test_cached_visual_history_matches_independent_clips_across_commands_and_scenes(self):
+        detector = SAWorldV2.__new__(SAWorldV2)
+        nn.Module.__init__(detector)
+        detector.pts_bbox_head = self.head
+        detector.eval()
+        observations = {}
+        for scene in ('a', 'b'):
+            for t in range(8):
+                meta = dict(scene_token=scene, sample_idx=str(t), prev_idx=str(t - 1),
+                            memory_timestamp=t * .5, memory_ego2global=np.eye(4))
+                meta['memory_ego2global'][0, 3] = t
+                observations[scene, t] = dict(img_metas=meta, can_bus=torch.randn(3, 18),
+                                              img_inputs=[torch.randn(3, 256, 4, 4)] + [torch.zeros(1)] * 6)
+
+        def extract(inputs, metas, **kwargs):
+            return [inputs[0][0]], None
+
+        def plan(bev, metas, *args, ego_fut_cmd, **kwargs):
+            preds = self.head(bev, metas, cmd=ego_fut_cmd, ego_lcf_feat=torch.zeros(1, 1, 1, 9))
+            return [preds['ego_fut_preds']], {}
+
+        # Cold shard start, warm command change, a different scene, a gap, and replay.
+        sequence = [('a', 4, [0, 1, 2, 3], 5), ('a', 5, [1, 2, 3, 4], 1),
+                    ('b', 0, [], 1), ('b', 1, [0], 1), ('b', 6, [], 1),
+                    ('a', 4, [0, 1, 2, 3], 5)]
+        with torch.no_grad(), patch.object(detector, 'extract_img_feat', side_effect=extract) as encoder, \
+                patch.object(detector, 'simple_test_pts', side_effect=plan):
+            for scene, t, indices, expected_calls in sequence:
+                current = observations[scene, t]
+                entries = [None] * (4 - len(indices)) + [observations[scene, j] for j in indices]
+                cmd = torch.eye(3)[t % 3].view(1, 1, 1, 3)
+                args = dict(img_metas=[current['img_metas']], ego_fut_cmd=cmd,
+                            img_inputs=[v[None] for v in current['img_inputs']],
+                            can_bus=current['can_bus'][None], gt_bboxes_3d=None, gt_labels_3d=None,
+                            map_gt_bboxes_3d=None, map_gt_labels_3d=None)
+                reference = detector.simple_test(history_memory=[entries], **args)
+                clip = DeferredTestHistory('dataset', {})
+                for entry in entries:
+                    clip.append(None if entry is None else dict(img_metas=entry['img_metas'],
+                                                               can_bus=entry['can_bus']))
+
+                def load(entry):
+                    source = observations[scene, int(entry['img_metas']['sample_idx'])]
+                    return dict(img_inputs=source['img_inputs'], memory_ego2global=source['img_metas']['memory_ego2global'])
+
+                encoder.reset_mock()
+                with patch.object(clip, 'load_observation', side_effect=load) as reads:
+                    actual = detector.simple_test(history_memory=[clip], **args)
+                torch.testing.assert_close(actual[0]['pts_bbox'], reference[0]['pts_bbox'], rtol=0, atol=0)
+                self.assertEqual(encoder.call_count, expected_calls)
+                self.assertEqual(reads.call_count, expected_calls - 1)
+                self.assertLessEqual(len(detector._test_bevs), 4)
+        detector.train()
+        self.assertFalse(detector._test_bevs)
+
+    def test_spatial_weights_are_shared_only_in_eval(self):
+        inputs = self.inputs()
+        with torch.no_grad(), patch.object(self.head.tokenfuser, 'spatial_mix',
+                                           wraps=self.head.tokenfuser.spatial_mix) as mix:
+            fast = self.head(**inputs)
+            self.assertEqual(mix.call_count, 1)
+            # Recompute the spatial weights at each horizon, as in the original decoder.
+            with patch.object(self.head.tokenfuser, 'forward',
+                              side_effect=lambda tokens, bev, mix: type(self.head.tokenfuser).forward(
+                                  self.head.tokenfuser, tokens, bev)):
+                reference = self.head(**inputs)
+            torch.testing.assert_close(fast['ego_fut_preds'], reference['ego_fut_preds'], rtol=0, atol=0)
+            torch.testing.assert_close(fast['pred_bev'], reference['pred_bev'], rtol=0, atol=0)
+            mix.reset_mock()
+            self.head.train()
+            self.head(**inputs)
+            self.assertEqual(mix.call_count, self.head.fut_ts)
+
     def test_shared_prediction_uses_physical_time_and_fits_a_known_trend(self):
         dynamics = ResidualDynamics(4)
         with torch.no_grad():
@@ -180,7 +255,10 @@ class DynamicsTests(unittest.TestCase):
                 return query
 
         class Fuser(nn.Module):
-            def forward(self, query, original):
+            def spatial_mix(self, original):
+                return original
+
+            def forward(self, query, original, mix=None):
                 return query[:, :1].expand_as(original)
 
         class Attention(nn.Module):

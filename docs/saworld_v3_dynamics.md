@@ -45,7 +45,9 @@ r_hat_(i+1) = r_i + dt_(i+1) * rate_i
 
 历史匹配采用当前观测建立的区域坐标系，因此该辅助项是对已观测历史的转移拟合，不应报告成真正的未来 BEV 预测精度。它不读取当前时刻之后的图像、场景标签或专家轨迹。未来六步仍由规划监督训练。
 
-复用 `SAWorldMemoryNuScenesDataset` 与 `SAWorldV2` 的样本内历史构建接口：随机当前帧、原过滤规则、同场景过去 K 帧、历史 eval/no_grad 编码、无跨 batch 缓存。新 head 独立实现，不 import 或继承旧 head。
+训练沿用 `SAWorldMemoryNuScenesDataset` 与 `SAWorldV2` 的样本内历史构建接口。每个随机抽取的当前帧按原过滤规则取同场景过去 K 帧，历史在 eval/no_grad 下独立编码。新 head 独立实现。
+
+v3 配置在验证与测试时启用 `cache_test_history=True`。每个推理进程最多保留 K 个观测的 BEV，按数据集、场景、样本标识和时间戳复用。缓存命中时直接用当前导航指令提取历史 token，缺失时再读取历史图像补算，因此从场景中间开始测试也能使用完整的有效历史。六个未来时刻在 eval 模式下共享同一张 TokenFuser 空间权重图。使用训练目录中的旧配置测试时，可传入 `--cfg-options data.test.cache_test_history=True`。
 
 ## 使用与比较
 
@@ -76,4 +78,4 @@ bash tools/dist_train.sh projects/configs/saworld/saworld_config_v3_dynamics.py 
 
 ## 边界
 
-软对应只利用区域内容与参考点，不保证对象身份一致；递推未来会累积误差。这是当前模型接受的简化。历史仍需重复编码，未来还需六次共享世界解码，计算量会增加；本次改动目标是验证动态记忆的效果，性能与成本需要实测。
+软对应利用区域内容与参考点，跨帧对象身份可能变化。递推未来会累积误差。推理时仍需按当前导航指令编码历史 token，并对六个未来时刻分别进行世界解码。

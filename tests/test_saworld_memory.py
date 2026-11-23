@@ -18,7 +18,7 @@ from mmdet.models import build_head
 import projects.mmdet3d_plugin  # register project components
 from projects.mmdet3d_plugin.saworld.saworld_v2 import SAWorldV2
 from projects.mmdet3d_plugin.datasets.nuscenes_saworld_memory_dataset import (
-    SAWorldMemoryNuScenesDataset, _CachedPrepareImageInputs)
+    DeferredTestHistory, SAWorldMemoryNuScenesDataset, _CachedPrepareImageInputs)
 from projects.mmdet3d_plugin.datasets.nuscenes_resworld_dataset import ResWorldCustomNuScenesDataset
 from projects.mmdet3d_plugin.datasets.pipelines.loading import PrepareImageInputs
 from projects.mmdet3d_plugin.datasets.pipelines.memory import SAWorldMemoryMetadata
@@ -116,6 +116,43 @@ class ImageTransformCacheTests(unittest.TestCase):
                 self.assertIs(type(dataset.pipeline.transforms[0]), expected)
                 if test_mode and size:
                     self.assertIs(dataset.history_images.cache, dataset.pipeline.transforms[0].cache)
+
+    def test_deferred_clip_from_worker_can_reconstruct_original_camera_inputs(self):
+        from functools import partial
+
+        ds = SAWorldMemoryNuScenesDataset.__new__(SAWorldMemoryNuScenesDataset)
+        ds._test_history_id = 'validation'
+        ds._test_history_config = dict(data_config=dict(cams=['front'], Ncams=1, input_size=(9, 12),
+                                                         crop_h=(0., 0.)), sequential=True)
+        ds.history_images = PrepareImageInputs(**ds._test_history_config)
+        ds.history_metadata = SAWorldMemoryMetadata()
+        ds.memory_frames, ds.memory_max_gap = 2, 1.
+        ds.multi_adj_frame_id_cfg = (1, 3, 1)
+        ds.data_infos = []
+        for i, path in enumerate([self.paths[0], *self.paths]):
+            rotation = [0.8, 0., 0., 0.6]
+            cam = dict(data_path=str(path), cam_intrinsic=np.eye(3), sensor2ego_rotation=[1, 0, 0, 0],
+                       ego2global_rotation=rotation, sensor2ego_translation=[0, 0, 0],
+                       ego2global_translation=[i, 0, 0])
+            ds.data_infos.append(dict(token=str(i), prev=str(i-1) if i > 1 else '',
+                                      scene_token='s' if i else 'prev',
+                                      timestamp=i*500000, cams={'front': cam}, can_bus=np.zeros(18),
+                                      ego2global_translation=[i, 0, 0], ego2global_rotation=rotation))
+        ds._token_to_index = {info['token']: i for i, info in enumerate(ds.data_infos)}
+        with patch.object(ResWorldCustomNuScenesDataset, 'prepare_test_data', return_value={}):
+            with patch.object(Image, 'open', side_effect=AssertionError('eagerly opened history')):
+                sample = ds.prepare_test_data(3)
+        loader = torch.utils.data.DataLoader([sample], num_workers=1,
+                                             collate_fn=partial(collate, samples_per_gpu=1))
+        clip = next(iter(loader))['history_memory'].data[0][0]
+        self.assertIsInstance(clip, DeferredTestHistory)
+        expected = ds._attach_history({}, 3)['history_memory'].data
+        for entry, eager in zip(clip, expected):
+            actual = clip.load_observation(entry)
+            for value, reference in zip(actual['img_inputs'], eager['img_inputs']):
+                torch.testing.assert_close(value, reference, atol=0, rtol=0)
+            torch.testing.assert_close(entry['can_bus'], eager['can_bus'], atol=0, rtol=0)
+            np.testing.assert_array_equal(actual['memory_ego2global'], eager['img_metas']['memory_ego2global'])
 
 
 class MemoryTests(unittest.TestCase):

@@ -1,9 +1,9 @@
 """Random current-frame sampling with an independent, causal history clip."""
 import copy
 from collections import OrderedDict
+from uuid import uuid4
 
 import numpy as np
-import torch
 from mmcv.parallel import DataContainer as DC
 from mmdet.datasets import DATASETS
 from nuscenes.eval.common.utils import Quaternion, quaternion_yaw
@@ -11,6 +11,22 @@ from nuscenes.eval.common.utils import Quaternion, quaternion_yaw
 from .nuscenes_resworld_dataset import ResWorldCustomNuScenesDataset
 from .pipelines.loading import PrepareImageInputs
 from .pipelines.memory import SAWorldMemoryMetadata
+
+
+class DeferredTestHistory(list):
+    """CPU-only clip. A rank opens historical images only on a BEV cache miss."""
+
+    def __init__(self, dataset_id, image_config):
+        super().__init__()
+        self.dataset_id = dataset_id
+        self.image_config = image_config
+
+    def cache_key(self, meta):
+        return (self.dataset_id, meta['scene_token'], meta['sample_idx'], meta['memory_timestamp'])
+
+    def load_observation(self, entry):
+        data = PrepareImageInputs(**self.image_config)(entry['source'].copy())
+        return SAWorldMemoryMetadata()(data)
 
 
 class _CachedPrepareImageInputs(PrepareImageInputs):
@@ -46,7 +62,7 @@ class SAWorldMemoryNuScenesDataset(ResWorldCustomNuScenesDataset):
     """
 
     def __init__(self, memory_frames=4, memory_max_gap=1.0,
-                 test_image_cache_size=128, **kwargs):
+                 test_image_cache_size=128, cache_test_history=False, **kwargs):
         if not isinstance(memory_frames, int) or memory_frames < 0:
             raise ValueError('memory_frames must be a nonnegative integer')
         if not isinstance(test_image_cache_size, int) or test_image_cache_size < 0:
@@ -60,6 +76,11 @@ class SAWorldMemoryNuScenesDataset(ResWorldCustomNuScenesDataset):
         self.history_images = PrepareImageInputs(**history_config)
         self.history_metadata = SAWorldMemoryMetadata()
         super().__init__(**kwargs)
+        self._test_history_id = uuid4().hex if self.test_mode and cache_test_history else None
+        if self._test_history_id:
+            if self.history_images.is_train:
+                raise ValueError('Caching history requires deterministic test image transforms')
+            self._test_history_config = history_config
         self._token_to_index = {info['token']: index for index, info in enumerate(self.data_infos)}
         if self.test_mode and test_image_cache_size:
             cache = OrderedDict()
@@ -86,27 +107,49 @@ class SAWorldMemoryNuScenesDataset(ResWorldCustomNuScenesDataset):
         # Oldest -> newest. Missing history is masked padding, never a future frame.
         return [None] * (self.memory_frames - len(indices)) + indices[::-1]
 
-    def _history_info(self, index):
-        info = copy.deepcopy(self.data_infos[index])
-        rotation = Quaternion(info['ego2global_rotation'])
-        can_bus = info['can_bus'].copy()
-        can_bus[:3] = info['ego2global_translation']
+    def _history_info(self, index, images_only=False):
+        source = self.data_infos[index]
+        if images_only:
+            fields = ('cams', 'scene_token', 'ego2global_rotation', 'ego2global_translation')
+            info = {key: source[key] for key in fields}
+        else:
+            info = copy.deepcopy(source)
+        rotation = Quaternion(source['ego2global_rotation'])
+        can_bus = source['can_bus'].copy()
+        can_bus[:3] = source['ego2global_translation']
         can_bus[3:7] = rotation.elements
         angle = quaternion_yaw(rotation) % (2 * np.pi)
         can_bus[-2], can_bus[-1] = angle, np.degrees(angle)
         info['can_bus'] = can_bus
-        return dict(curr=info, adjacent=copy.deepcopy(self.get_adj_info(info, index)),
-                    timestamp=info['timestamp'] / 1e6, scene_token=info['scene_token'],
-                    sample_idx=info['token'], prev_idx=info['prev'])
+        # At a scene boundary get_adj_info can return and normalize this copy of
+        # the current observation as one of its own adjacent inputs.
+        adjacent = self.get_adj_info(info, index)
+        if images_only:
+            adjacent = [dict(cams=frame['cams'], can_bus=frame['can_bus'].copy())
+                        for frame in adjacent]
+        else:
+            adjacent = copy.deepcopy(adjacent)
+        return dict(curr=info, adjacent=adjacent, timestamp=source['timestamp'] / 1e6,
+                    scene_token=source['scene_token'], sample_idx=source['token'],
+                    prev_idx=source['prev'])
 
-    def _attach_history(self, example, index):
+    def _attach_history(self, example, index, defer_images=False):
         if example is None or not self.memory_frames:
             return example
-        history = []
+        history = (DeferredTestHistory(self._test_history_id, self._test_history_config)
+                   if defer_images else [])
         # CPU-only payload avoids transferring all K image clips to GPU at once.
         for previous in self._history_indices(index):
             if previous is None:
                 history.append(None)
+                continue
+            if defer_images:
+                # Include the original camera inputs for cold starts and shard boundaries.
+                info = self._history_info(previous, images_only=True)
+                meta = dict(scene_token=info['scene_token'], sample_idx=info['sample_idx'],
+                            prev_idx=info['prev_idx'], memory_timestamp=info['timestamp'])
+                history.append(dict(img_metas=meta, can_bus=self.history_images.get_can_bus(info),
+                                    source=info))
                 continue
             data = self.history_metadata(self.history_images(self._history_info(previous)))
             history.append(dict(
@@ -123,4 +166,5 @@ class SAWorldMemoryNuScenesDataset(ResWorldCustomNuScenesDataset):
         return self._attach_history(super().prepare_train_data(index), index)
 
     def prepare_test_data(self, index):
-        return self._attach_history(super().prepare_test_data(index), index)
+        return self._attach_history(super().prepare_test_data(index), index,
+                                    defer_images=self._test_history_id is not None)

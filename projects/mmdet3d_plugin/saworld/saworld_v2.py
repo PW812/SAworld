@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 from mmdet.models import DETECTORS
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
+from ..datasets.nuscenes_saworld_memory_dataset import DeferredTestHistory
 from projects.mmdet3d_plugin.saworld.planner.metric_stp3 import PlanningMetric
 from .bevdet import BEVDepth4D
 from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence
@@ -19,6 +20,42 @@ class SAWorldV2(BEVDepth4D):
         self.fut_ts = fut_ts
         self.fut_mode = fut_mode
         self.planning_metric = None
+        self._test_bevs = {}
+
+    def train(self, mode=True):
+        self._test_bevs = {}
+        return super().train(mode)
+
+    def _apply(self, fn):
+        self._test_bevs = {}
+        return super()._apply(fn)
+
+    def _load_from_state_dict(self, *args, **kwargs):
+        self._test_bevs = {}
+        return super()._load_from_state_dict(*args, **kwargs)
+
+    def _remember_test_bev(self, key, bev, pose):
+        # Plain attributes keep per-rank observations out of checkpoints and DDP buffers.
+        self._test_bevs[key] = (bev.detach(), pose)
+        if len(self._test_bevs) > self.pts_bbox_head.memory_frames:
+            del self._test_bevs[next(iter(self._test_bevs))]
+
+    def _load_history_bev(self, entries, metas, device):
+        inputs = [torch.stack([entry['img_inputs'][j] for entry in entries]).to(device)
+                  for j in range(7)]
+        features, _ = self.extract_img_feat(inputs, metas)
+        return features[0]
+
+    def _cached_history_bev(self, clip, entry, device):
+        meta = entry['img_metas']
+        key = clip.cache_key(meta)
+        if key not in self._test_bevs:
+            data = clip.load_observation(entry)
+            pose = data['memory_ego2global']
+            bev = self._load_history_bev([data], [dict(meta, memory_ego2global=pose)], device)
+            self._remember_test_bev(key, bev, pose)
+        bev, pose = self._test_bevs[key]
+        return bev, [dict(meta, memory_ego2global=pose)]
 
     @contextmanager
     def _history_eval(self):
@@ -37,8 +74,8 @@ class SAWorldV2(BEVDepth4D):
                 module.training = training
 
     @torch.no_grad()
-    def build_history_memory(self, history, img_metas, cmd):
-        """Chronologically encode the current batch's past, then discard it.
+    def build_history_memory(self, history, img_metas, cmd, test_clip=None):
+        """Chronologically encode the current batch's past using the anchor command.
 
         Only one history timestep is moved to the device at a time. Each slot
         owns a distinct clip, regardless of sampler order or previous batches.
@@ -71,23 +108,24 @@ class SAWorldV2(BEVDepth4D):
             points=torch.zeros(shape[:-1] + (3,), device=reference.device, dtype=torch.float64),
             timestamp=torch.zeros(batch, frames, device=reference.device, dtype=torch.float64),
             valid=torch.zeros(batch, frames, device=reference.device, dtype=torch.bool))
-        with self._history_eval():
+        with self._history_eval() if test_clip is None else nullcontext():
             for frame in range(frames):
                 indices = [i for i, clip in enumerate(history) if clip[frame] is not None]
                 if not indices:
                     continue
                 entries = [history[i][frame] for i in indices]
-                inputs = [torch.stack([entry['img_inputs'][j] for entry in entries]).to(reference.device)
-                          for j in range(7)]
                 can_bus = torch.stack([entry['can_bus'] for entry in entries]).to(reference.device)
-                metas = [entry['img_metas'] for entry in entries]
-                features, _ = self.extract_img_feat(inputs, metas)
+                if test_clip is None:
+                    metas = [entry['img_metas'] for entry in entries]
+                    bev = self._load_history_bev(entries, metas, reference.device)
+                else:
+                    bev, metas = self._cached_history_bev(test_clip, entries[0], reference.device)
                 index = torch.tensor(indices, device=cmd.device)
-                encoded = head.encode_memory([features[0], can_bus], cmd[index], metas)
+                encoded = head.encode_memory([bev, can_bus], cmd[index], metas)
                 for key in encoded:
                     memory[key][indices, frame] = encoded[key].detach()
                 memory['valid'][indices, frame] = True
-                del features, encoded, inputs, can_bus
+                del bev, encoded, can_bus
         return memory
 
     def extract_img_feat(self,
@@ -273,8 +311,19 @@ class SAWorldV2(BEVDepth4D):
     ):
         """Test function without augmentaiton."""
         history = kwargs.pop('history_memory', None)
-        memory = self.build_history_memory(history, img_metas, ego_fut_cmd)
+        test_clip = None
+        if history and isinstance(history[0], DeferredTestHistory):
+            if self.training or len(img_metas) != 1:
+                raise ValueError('Cached test history requires eval mode and one anchor per device')
+            test_clip = history[0]
+            # Drop observations from other scenes, gaps and previous samplers.
+            needed = {test_clip.cache_key(entry['img_metas']) for entry in test_clip if entry is not None}
+            self._test_bevs = {k: v for k, v in self._test_bevs.items() if k in needed}
+        memory = self.build_history_memory(history, img_metas, ego_fut_cmd, test_clip=test_clip)
         img_feats, _, _ = self.extract_feat(points, img=img_inputs, img_metas=img_metas, **kwargs)
+        if test_clip is not None:
+            meta = img_metas[0]
+            self._remember_test_bev(test_clip.cache_key(meta), img_feats[0], meta['memory_ego2global'])
         bbox_list = [dict() for i in range(len(img_metas))]
         bev_inputs = [img_feats[0], kwargs['can_bus'], memory]
         bbox_pts, metric_dict = self.simple_test_pts(

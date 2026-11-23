@@ -376,13 +376,16 @@ class SAWorldHeadV3(BaseModule):
         spatial_shapes = torch.tensor([[self.bev_h, self.bev_w]], device=way_point.device)
         level_start_index = torch.zeros(1, dtype=torch.long, device=way_point.device)
         refined = []
+        # All horizons condition on the same observed BEV. During training the
+        # fuser retains its per-step forward (including any dropout).
+        mix = None if self.training else self.tokenfuser.spatial_mix(bev_navi_embed)
         for step in range(steps):
             # Existing action/trajectory conditioning belongs to the world decoder.
             world_query = self.action_mln(future_states[:, step].transpose(0, 1), prior)
             world_query = self.res_latent_decoder(
                 query=world_query, key=world_query, value=world_query,
                 query_pos=position, key_pos=position)
-            pred_bev = self.tokenfuser(world_query.transpose(0, 1), bev_navi_embed) + bev_navi_embed
+            pred_bev = self.tokenfuser(world_query.transpose(0, 1), bev_navi_embed, mix=mix) + bev_navi_embed
             refined.append(self.col_attn(
                 query=query[:, step], key=pred_bev.transpose(0, 1), value=pred_bev.transpose(0, 1),
                 reference_points=reference_points[:, :, step],

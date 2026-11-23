@@ -297,6 +297,7 @@ data = dict(
         box_type_3d='LiDAR',
         custom_eval_version='vad_nusc_detection_cvpr_2019'),
     val=dict(type=dataset_type,
+             cache_test_history=True,
              memory_frames=memory_frames,
              memory_max_gap=memory_max_gap,
              data_root=data_root,
@@ -312,6 +313,7 @@ data = dict(
              use_pkl_result=True,
              custom_eval_version='vad_nusc_detection_cvpr_2019'),
     test=dict(type=dataset_type,
+              cache_test_history=True,
               memory_frames=memory_frames,
               memory_max_gap=memory_max_gap,
               data_root=data_root,
@@ -370,3 +372,23 @@ custom_hooks = [
 ]
 load_from = 'ckpts/geobev-r50-nuimage-cbgs.pth'
 work_dir = './work_dirs/saworld_v3_residual_dynamics'
+# -------------- Planning --------------
+# plan_L2_1s:0.13544800293967954
+# plan_L2_2s:0.2742951272724096
+# plan_L2_3s:0.5025779541155682
+# plan_obj_col_1s:0.0
+# plan_obj_col_2s:0.0
+# plan_obj_col_3s:6.511688674886516e-05
+# plan_obj_box_col_1s:0.0
+# plan_obj_box_col_2s:0.000586051963274077
+# plan_obj_box_col_3s:0.0021162988164271663
+# fut_valid_flag:1.0
+# plan_L2_stp3_1s:0.1798317297802108
+# plan_obj_col_stp3_1s:0.0
+# plan_obj_box_col_stp3_1s:0.0
+# plan_L2_stp3_2s:0.5119915369077221
+# plan_obj_col_stp3_2s:0.0
+# plan_obj_box_col_stp3_2s:0.0013674545809728462
+# plan_L2_stp3_3s:1.134513052067701
+# plan_obj_col_stp3_3s:0.0001953506544246923
+# plan_obj_box_col_stp3_3s:0.007032623559288923
